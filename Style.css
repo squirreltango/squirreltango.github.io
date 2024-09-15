@@ -1,0 +1,88 @@
+body{
+    background-color: rgb(230, 227, 225);
+    font-family: Arial, Helvetica, sans-serif;
+    margin: 0px;
+    font-size: 1.5vw;
+}
+h1{
+    margin: 0px;
+    padding: 8px;
+    font-family: "Fredoka One", sans-serif;
+    width: 30%;
+
+
+}
+
+ul{
+    margin: 0px;
+}
+body> header{
+background-color: rgb(13, 1, 43);
+color: white;
+}
+#nav-ul{
+    display: flex;
+
+}
+#nav-ul > li{
+    padding: 8px;
+    margin:16px;
+}
+body> header> nav> ul{
+    list-style: none;
+    text-decoration: none;
+}
+
+.navbutton {
+    color: white;
+    text-decoration: none;
+    padding: 12px;
+    border: 1px solid white;
+    border-radius: 10%;
+}
+
+body > main > article {
+    width: 70%;
+    margin: auto;
+}
+
+form {
+    text-align: center;
+}
+
+h2{
+    text-align: center;
+}
+
+#main-header{
+    display: flex;
+    height: 12vh;
+    align-items: center;
+    justify-content:space-around
+
+}
+body > footer {
+    background-color: #100824;
+    color: white;
+    display: flex;
+
+
+}
+
+img{
+    border-radius: 50%;
+}
+#footer-ul{
+    display: flex;
+    list-style: none;
+
+}
+#footer-ul > li{
+    margin-left: 12px;
+}
+#footer-ul > div > li > a{
+    color: white;
+    text-decoration: none;
+    margin: 10%;
+
+}
