@@ -96,7 +96,7 @@ export default function HomePage() {
             Find extraordinary places near you
           </h1>
           <p className="text-lg sm:text-xl text-muted-foreground leading-relaxed">
-            Curated restaurants, wellness spots, and hidden gems handpicked for discerning locals.
+            Curated restaurants, wellness spots, and hidden gems handpicked for curious locals.
           </p>
         </div>
 
