@@ -3,11 +3,12 @@
 import { useEffect, useRef, useState, useCallback } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import L from "leaflet"
-import "leaflet/dist/leaflet.css"
 import { Star, MapPin, X, Navigation, Heart, ExternalLink, Instagram, ShieldCheck, Building2, TrendingUp, Bookmark, ChevronLeft, ChevronRight } from "lucide-react"
 import type { Business } from "@/lib/data"
 import { cn } from "@/lib/utils"
+
+// Type for Leaflet - imported dynamically
+type LeafletType = typeof import("leaflet")
 
 interface MapViewProps {
   businesses: Business[]
@@ -17,6 +18,7 @@ export function MapView({ businesses }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const mapInstance = useRef<L.Map | null>(null)
   const markersRef = useRef<L.Marker[]>([])
+  const leafletRef = useRef<LeafletType | null>(null)
   const [selectedBusiness, setSelectedBusiness] = useState<Business | null>(null)
   const [hoveredBusiness, setHoveredBusiness] = useState<Business | null>(null)
   const [mapReady, setMapReady] = useState(false)
@@ -39,46 +41,8 @@ export function MapView({ businesses }: MapViewProps) {
     })
   }
 
-  // Initialize map
-  useEffect(() => {
-    if (!mapContainer.current || mapInstance.current) return
-
-    // Fix default marker icons
-    delete (L.Icon.Default.prototype as any)._getIconUrl
-    L.Icon.Default.mergeOptions({
-      iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-      iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-      shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-    })
-
-    // Create map centered on London
-    const map = L.map(mapContainer.current, {
-      center: [51.505, -0.1276],
-      zoom: 12,
-      zoomControl: false,
-    })
-
-    // Add tile layer (CARTO Light style for clean look)
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-      maxZoom: 19,
-    }).addTo(map)
-
-    // Add zoom control to top right
-    L.control.zoom({ position: "topright" }).addTo(map)
-
-    mapInstance.current = map
-    setMapReady(true)
-
-    return () => {
-      map.remove()
-      mapInstance.current = null
-      setMapReady(false)
-    }
-  }, [])
-
   // Create custom marker icon
-  const createCustomIcon = useCallback((business: Business, isSelected: boolean, isHovered: boolean) => {
+  const createCustomIcon = useCallback((L: LeafletType, business: Business, isSelected: boolean, isHovered: boolean) => {
     const isTrending = business.ratings.instagram?.trending
     const isActive = isSelected || isHovered
     
@@ -144,10 +108,66 @@ export function MapView({ businesses }: MapViewProps) {
     })
   }, [])
 
+  // Initialize map - dynamically import Leaflet
+  useEffect(() => {
+    if (typeof window === "undefined" || !mapContainer.current || mapInstance.current) return
+
+    let isMounted = true
+
+    const initMap = async () => {
+      // Dynamically import Leaflet and CSS
+      const L = await import("leaflet")
+      await import("leaflet/dist/leaflet.css")
+
+      if (!isMounted || !mapContainer.current) return
+
+      leafletRef.current = L
+
+      // Fix default marker icons
+      delete (L.Icon.Default.prototype as any)._getIconUrl
+      L.Icon.Default.mergeOptions({
+        iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+        iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+        shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+      })
+
+      // Create map centered on London
+      const map = L.map(mapContainer.current, {
+        center: [51.505, -0.1276],
+        zoom: 12,
+        zoomControl: false,
+      })
+
+      // Add tile layer (CARTO Light style for clean look)
+      L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+        maxZoom: 19,
+      }).addTo(map)
+
+      // Add zoom control to top right
+      L.control.zoom({ position: "topright" }).addTo(map)
+
+      mapInstance.current = map
+      setMapReady(true)
+    }
+
+    initMap()
+
+    return () => {
+      isMounted = false
+      if (mapInstance.current) {
+        mapInstance.current.remove()
+        mapInstance.current = null
+        setMapReady(false)
+      }
+    }
+  }, [])
+
   // Add markers when map is ready and businesses change
   useEffect(() => {
-    if (!mapReady || !mapInstance.current) return
+    if (!mapReady || !mapInstance.current || !leafletRef.current) return
 
+    const L = leafletRef.current
     const map = mapInstance.current
 
     // Clear existing markers
@@ -159,7 +179,7 @@ export function MapView({ businesses }: MapViewProps) {
     // Add markers for each business
     businesses.forEach((business) => {
       const marker = L.marker([business.coordinates.lat, business.coordinates.lng], {
-        icon: createCustomIcon(business, selectedBusiness?.id === business.id, hoveredBusiness?.id === business.id),
+        icon: createCustomIcon(L, business, selectedBusiness?.id === business.id, hoveredBusiness?.id === business.id),
       })
 
       marker.on("click", () => {
@@ -194,18 +214,21 @@ export function MapView({ businesses }: MapViewProps) {
 
   // Update marker icons when selection/hover changes
   useEffect(() => {
-    if (!mapReady) return
+    if (!mapReady || !leafletRef.current) return
+
+    const L = leafletRef.current
 
     markersRef.current.forEach((marker, index) => {
       const business = businesses[index]
       if (business) {
-        marker.setIcon(createCustomIcon(business, selectedBusiness?.id === business.id, hoveredBusiness?.id === business.id))
+        marker.setIcon(createCustomIcon(L, business, selectedBusiness?.id === business.id, hoveredBusiness?.id === business.id))
       }
     })
   }, [selectedBusiness?.id, hoveredBusiness?.id, mapReady, businesses, createCustomIcon])
 
   const handleRecenter = () => {
-    if (mapInstance.current && businesses.length > 0) {
+    if (mapInstance.current && leafletRef.current && businesses.length > 0) {
+      const L = leafletRef.current
       const bounds = L.latLngBounds(
         businesses.map((b) => [b.coordinates.lat, b.coordinates.lng] as [number, number])
       )
@@ -498,28 +521,26 @@ export function MapView({ businesses }: MapViewProps) {
             {savedBusinesses.length === 0 ? (
               <div className="p-8 text-center">
                 <div className="w-12 h-12 rounded-2xl bg-secondary flex items-center justify-center mx-auto mb-3">
-                  <Heart className="h-6 w-6 text-muted-foreground" />
+                  <Heart className="h-5 w-5 text-muted-foreground" />
                 </div>
                 <p className="text-sm text-muted-foreground">No saved places yet</p>
-                <p className="text-xs text-muted-foreground mt-1">Click the heart on any place to save it</p>
+                <p className="text-xs text-muted-foreground/70 mt-1">Click the heart icon on a place to save it</p>
               </div>
             ) : (
-              <div className="p-3 space-y-2">
+              <div className="p-2">
                 {savedBusinesses.map((business) => (
-                  <div
+                  <button
                     key={business.id}
                     onClick={() => {
                       setSelectedBusiness(business)
                       setShowSavedPanel(false)
-                      // Pan to marker
                       if (mapInstance.current) {
-                        mapInstance.current.panTo([business.coordinates.lat, business.coordinates.lng])
+                        mapInstance.current.setView([business.coordinates.lat, business.coordinates.lng], 15)
                       }
                     }}
                     className={cn(
-                      "flex items-center gap-3 p-3 rounded-2xl cursor-pointer",
-                      "bg-secondary/40 transition-all duration-300",
-                      "hover:bg-secondary hover:scale-[1.02]"
+                      "w-full flex items-center gap-3 p-3 rounded-2xl",
+                      "hover:bg-secondary/60 transition-colors text-left"
                     )}
                   >
                     <div className="relative w-14 h-14 rounded-xl overflow-hidden shrink-0" style={{ position: 'relative' }}>
@@ -531,22 +552,14 @@ export function MapView({ businesses }: MapViewProps) {
                       />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h4 className="font-medium text-sm text-foreground line-clamp-1">{business.name}</h4>
-                      <div className="flex items-center gap-2 mt-1">
-                        <div className="flex items-center gap-1">
-                          <Star className="h-3 w-3 fill-amber-500 text-amber-500" />
-                          <span className="text-xs text-muted-foreground">{business.ratings.google.rating}</span>
-                        </div>
-                        <span className="text-xs text-muted-foreground">{business.location}</span>
+                      <h4 className="font-medium text-sm text-foreground truncate">{business.name}</h4>
+                      <p className="text-xs text-muted-foreground truncate">{business.location}</p>
+                      <div className="flex items-center gap-1 mt-1">
+                        <Star className="h-3 w-3 fill-amber-500 text-amber-500" />
+                        <span className="text-xs font-medium text-foreground">{business.ratings.google.rating}</span>
                       </div>
                     </div>
-                    <button
-                      onClick={(e) => toggleSave(business.id, e)}
-                      className="p-2 rounded-full bg-pink-100 text-pink-500 hover:bg-pink-200 transition-colors"
-                    >
-                      <Heart className="h-3.5 w-3.5 fill-current" />
-                    </button>
-                  </div>
+                  </button>
                 ))}
               </div>
             )}
@@ -554,47 +567,29 @@ export function MapView({ businesses }: MapViewProps) {
         </div>
       )}
 
+      {/* Legend */}
+      <div className="absolute bottom-4 left-4 z-[1000] px-4 py-2 rounded-2xl bg-card/95 backdrop-blur-sm border border-border/40 shadow-lg">
+        <span className="text-xs font-medium text-muted-foreground">
+          {businesses.length} {businesses.length === 1 ? 'place' : 'places'} found
+        </span>
+      </div>
+
       {/* Hover Preview Card */}
       {hoveredBusiness && !selectedBusiness && (
-        <div 
-          className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[1000] pointer-events-auto"
-          onMouseEnter={() => setHoveredBusiness(hoveredBusiness)}
-          onMouseLeave={() => setHoveredBusiness(null)}
-        >
+        <div className="absolute bottom-4 right-4 z-[1000]">
           <PreviewCard business={hoveredBusiness} isHover />
         </div>
       )}
 
       {/* Selected Business Card */}
       {selectedBusiness && (
-        <div className="absolute bottom-6 left-6 right-6 sm:left-auto sm:right-6 z-[1000]">
+        <div className="absolute bottom-4 right-4 z-[1000]">
           <PreviewCard business={selectedBusiness} />
         </div>
       )}
 
-      {/* Legend */}
-      {!showSavedPanel && (
-        <div className="absolute bottom-6 left-6 hidden sm:block z-[1000]">
-          <div className="bg-card/95 backdrop-blur-md rounded-2xl px-5 py-3 text-sm text-muted-foreground border border-border/40 shadow-lg transition-all duration-300 hover:shadow-xl">
-            <span className="font-semibold text-foreground">{businesses.length}</span> places in London
-          </div>
-        </div>
-      )}
-
-      {/* Custom styles for tooltips and animations */}
+      {/* Custom styles for Leaflet */}
       <style jsx global>{`
-        .custom-tooltip {
-          background: white;
-          border: 1px solid #e5e5e5;
-          border-radius: 8px;
-          padding: 6px 10px;
-          font-size: 12px;
-          font-weight: 500;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-        .custom-tooltip::before {
-          display: none;
-        }
         .leaflet-control-zoom {
           border: none !important;
           box-shadow: 0 4px 12px rgba(0,0,0,0.1) !important;
@@ -605,29 +600,29 @@ export function MapView({ businesses }: MapViewProps) {
           width: 44px !important;
           height: 44px !important;
           line-height: 44px !important;
-          font-size: 18px !important;
           color: #1a1a1a !important;
-          background: white !important;
+          font-size: 18px !important;
           border: none !important;
+          background: white !important;
         }
         .leaflet-control-zoom a:hover {
           background: #f5f5f5 !important;
         }
-        .custom-map-marker {
-          background: transparent !important;
-          border: none !important;
+        .leaflet-control-zoom-in {
+          border-radius: 16px 16px 0 0 !important;
+        }
+        .leaflet-control-zoom-out {
+          border-radius: 0 0 16px 16px !important;
         }
         @keyframes pulse {
-          0%, 100% { opacity: 0.6; transform: translateX(-50%) scale(1); }
-          50% { opacity: 0.3; transform: translateX(-50%) scale(1.5); }
-        }
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(10px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes slideInUp {
-          from { opacity: 0; transform: translateY(20px); }
-          to { opacity: 1; transform: translateY(0); }
+          0%, 100% {
+            opacity: 0.6;
+            transform: translateX(-50%) scale(1);
+          }
+          50% {
+            opacity: 0.3;
+            transform: translateX(-50%) scale(1.2);
+          }
         }
       `}</style>
     </div>
