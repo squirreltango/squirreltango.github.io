@@ -4,7 +4,6 @@ import type { Business, GalleryImage, RatingsSummary } from "@/lib/data"
 export const dynamic = "force-dynamic"
 export const revalidate = 0
 
-// Database row type (snake_case from Supabase)
 interface BusinessRow {
   id: string
   name: string
@@ -24,7 +23,6 @@ interface BusinessRow {
   updated_at: string
 }
 
-// Transform database row to Business type
 function mapRowToBusiness(row: BusinessRow): Business {
   return {
     id: row.id,
@@ -33,7 +31,7 @@ function mapRowToBusiness(row: BusinessRow): Business {
     rating: row.rating,
     reviewCount: row.review_count,
     location: row.location,
-    description: row.description || '',
+    description: row.description || "",
     image: row.image,
     images: row.images || [],
     gallery: row.gallery || [],
@@ -49,18 +47,14 @@ function mapRowToBusiness(row: BusinessRow): Business {
 export async function GET() {
   try {
     const supabase = await createClient()
-    
+
     const { data, error } = await supabase
       .from("businesses")
       .select("*")
       .order("rating", { ascending: false })
 
     if (error) {
-      console.error("[v0] Error fetching businesses:", error)
-      return Response.json(
-        { error: error.message }, 
-        { status: 500 }
-      )
+      return Response.json({ error: error.message }, { status: 500 })
     }
 
     if (!data || data.length === 0) {
@@ -68,13 +62,9 @@ export async function GET() {
     }
 
     const businesses = (data as BusinessRow[]).map(mapRowToBusiness)
-    
+
     return Response.json(businesses)
   } catch (err) {
-    console.error("[v0] Unexpected error in /api/businesses:", err)
-    return Response.json(
-      { error: "Internal server error" }, 
-      { status: 500 }
-    )
+    return Response.json({ error: "Internal server error" }, { status: 500 })
   }
 }
