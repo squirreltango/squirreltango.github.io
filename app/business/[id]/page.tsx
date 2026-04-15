@@ -1,13 +1,16 @@
 "use client"
 
 import { use, useState } from "react"
+import useSWR from "swr"
 import Image from "next/image"
 import Link from "next/link"
-import { ArrowLeft, Star, MapPin, Heart, Share2, Clock, Phone, Globe, ChevronRight, Instagram, ShieldCheck, Building2, TrendingUp, ExternalLink } from "lucide-react"
-import { businesses } from "@/lib/data"
+import { ArrowLeft, Star, MapPin, Heart, Share2, Clock, Phone, Globe, ChevronRight, Instagram, ShieldCheck, Building2, TrendingUp, ExternalLink, Loader2 } from "lucide-react"
+import { businesses as mockBusinesses, type Business } from "@/lib/data"
 import { PhotoGallery } from "@/components/photo-gallery"
 import { cn } from "@/lib/utils"
 import { notFound } from "next/navigation"
+
+const fetcher = (url: string) => fetch(url).then((res) => res.json())
 
 interface Review {
   id: string
@@ -47,11 +50,37 @@ const mockReviews: Review[] = [
 
 export default function BusinessDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
-  const business = businesses.find((b) => b.id === id)
   const [isSaved, setIsSaved] = useState(false)
 
-  if (!business) {
+  // Fetch from Supabase API
+  const { data: supabaseBusiness, isLoading } = useSWR<Business>(
+    `/api/businesses/${id}`,
+    fetcher,
+    { revalidateOnFocus: false }
+  )
+
+  // Fallback to mock data if Supabase returns nothing
+  const mockBusiness = mockBusinesses.find((b) => b.id === id)
+  const business = supabaseBusiness || mockBusiness
+
+  if (!isLoading && !business) {
     notFound()
+  }
+
+  // Show loading skeleton while fetching
+  if (isLoading && !mockBusiness) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          <p className="text-muted-foreground">Loading business details...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!business) {
+    return null
   }
 
   return (

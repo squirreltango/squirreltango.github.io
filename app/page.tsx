@@ -1,15 +1,19 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
+import useSWR from "swr"
 import { Header } from "@/components/header"
 import { CategoryFilter } from "@/components/category-filter"
 import { BusinessCard } from "@/components/business-card"
 import { MapView } from "@/components/map-view"
 import { AuthModal } from "@/components/auth-modal"
-import { businesses, categories } from "@/lib/data"
+import { businesses as mockBusinesses, categories, type Business } from "@/lib/data"
 import { FilterBar, type SortOption, type FilterOptions } from "@/components/filter-bar"
 import { AIPicks } from "@/components/ai-picks"
 import { AISearch } from "@/components/ai-search"
+import { Loader2 } from "lucide-react"
+
+const fetcher = (url: string) => fetch(url).then((res) => res.json())
 
 export default function HomePage() {
   const [searchQuery, setSearchQuery] = useState("")
@@ -24,10 +28,53 @@ export default function HomePage() {
   })
   const [isAISearching, setIsAISearching] = useState(false)
   const [aiSearchQuery, setAISearchQuery] = useState<string | null>(null)
+  const [isSettingUp, setIsSettingUp] = useState(false)
+
+  // Fetch businesses from Supabase
+  const { data: supabaseBusinesses, error, isLoading, mutate } = useSWR<Business[]>(
+    "/api/businesses",
+    fetcher,
+    {
+      revalidateOnFocus: false,
+      fallbackData: [], // Start empty, will fallback to mock if needed
+    }
+  )
+
+  // Use Supabase data if available, otherwise fallback to mock data
+  const businesses = useMemo(() => {
+    if (supabaseBusinesses && supabaseBusinesses.length > 0) {
+      return supabaseBusinesses
+    }
+    // Fallback to mock data if Supabase returns empty or errors
+    if (error || (supabaseBusinesses && supabaseBusinesses.length === 0)) {
+      return mockBusinesses
+    }
+    return mockBusinesses
+  }, [supabaseBusinesses, error])
+
+  const isUsingMockData = !supabaseBusinesses || supabaseBusinesses.length === 0 || error
+
+  // Setup database if needed
+  const handleSetupDatabase = async () => {
+    setIsSettingUp(true)
+    try {
+      const res = await fetch("/api/setup", { method: "POST" })
+      const data = await res.json()
+      if (data.error) {
+        console.error("Setup error:", data.error)
+      } else {
+        // Refetch businesses after setup
+        mutate()
+      }
+    } catch (err) {
+      console.error("Setup failed:", err)
+    } finally {
+      setIsSettingUp(false)
+    }
+  }
 
   const handleAISearch = (query: string) => {
     setIsAISearching(true)
-    // Simulate AI processing delay
     setTimeout(() => {
       setSearchQuery(query)
       setAISearchQuery(query)
@@ -59,7 +106,6 @@ export default function HomePage() {
 
       const matchesCategory = activeCategory === "all" || business.category === activeCategory
 
-      // Apply filters
       const matchesTrending = !filters.trendingOnly || business.ratings.instagram?.trending === true
       const matchesFoodHygiene = filters.minFoodHygiene === null || 
         (business.ratings.foodHygiene !== undefined && business.ratings.foodHygiene >= filters.minFoodHygiene)
@@ -68,7 +114,6 @@ export default function HomePage() {
       return matchesSearch && matchesCategory && matchesTrending && matchesFoodHygiene && matchesBooking
     })
 
-    // Apply sorting
     if (sortBy === "google_rating") {
       result = [...result].sort((a, b) => b.ratings.google.rating - a.ratings.google.rating)
     } else if (sortBy === "instagram_followers") {
@@ -78,7 +123,7 @@ export default function HomePage() {
     }
 
     return result
-  }, [searchQuery, activeCategory, sortBy, filters])
+  }, [businesses, searchQuery, activeCategory, sortBy, filters])
 
   return (
     <div className="min-h-screen bg-background">
@@ -89,6 +134,24 @@ export default function HomePage() {
       />
 
       <main className="max-w-7xl mx-auto px-5 sm:px-8 py-10 sm:py-14">
+        {/* Database Status Banner */}
+        {isUsingMockData && !isLoading && (
+          <div className="mb-8 p-4 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-between gap-4 flex-wrap">
+            <div>
+              <p className="text-sm font-medium text-amber-800">Using demo data</p>
+              <p className="text-xs text-amber-600">Connect to Supabase to use real data</p>
+            </div>
+            <button
+              onClick={handleSetupDatabase}
+              disabled={isSettingUp}
+              className="px-4 py-2 rounded-lg bg-amber-600 text-white text-sm font-medium hover:bg-amber-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+            >
+              {isSettingUp && <Loader2 className="h-4 w-4 animate-spin" />}
+              {isSettingUp ? "Setting up..." : "Setup Database"}
+            </button>
+          </div>
+        )}
+
         {/* Hero Section */}
         <div className="mb-12 max-w-2xl">
           <p className="text-sm font-medium tracking-widest uppercase text-muted-foreground mb-4">Discover London</p>
@@ -156,8 +219,7 @@ export default function HomePage() {
         </div>
 
         {/* Content */}
-        {isAISearching ? (
-          /* Loading Skeleton */
+        {isLoading || isAISearching ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
             {[1, 2, 3, 4, 5, 6].map((i) => (
               <div key={i} className="animate-pulse">
@@ -179,7 +241,7 @@ export default function HomePage() {
           <MapView businesses={filteredBusinesses} />
         )}
 
-        {filteredBusinesses.length === 0 && (
+        {filteredBusinesses.length === 0 && !isLoading && (
           <div className="text-center py-24">
             <div className="w-16 h-16 rounded-3xl bg-secondary flex items-center justify-center mx-auto mb-6">
               <span className="text-3xl text-muted-foreground">?</span>
