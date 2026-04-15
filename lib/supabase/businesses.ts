@@ -1,8 +1,7 @@
-import { createClient } from './client'
 import type { Business, GalleryImage, RatingsSummary } from '@/lib/data'
 
 // Database row type (snake_case from Supabase)
-interface BusinessRow {
+export interface BusinessRow {
   id: string
   name: string
   category: string
@@ -22,7 +21,8 @@ interface BusinessRow {
 }
 
 // Transform database row to Business type (camelCase)
-function mapRowToBusiness(row: BusinessRow): Business {
+// Exported for use in API routes
+export function mapSupabaseBusinessToLocal(row: BusinessRow): Business {
   return {
     id: row.id,
     name: row.name,
@@ -34,61 +34,11 @@ function mapRowToBusiness(row: BusinessRow): Business {
     image: row.image,
     images: row.images || [],
     gallery: row.gallery || [],
-    coordinates: row.coordinates,
+    coordinates: row.coordinates || { lat: 51.5074, lng: -0.1278 },
     priceLevel: row.price_level,
     tags: row.tags || [],
-    ratings: row.ratings,
+    ratings: row.ratings || {
+      google: { rating: row.rating, reviews: row.review_count },
+    },
   }
-}
-
-export async function getBusinesses(): Promise<Business[]> {
-  const supabase = createClient()
-  
-  const { data, error } = await supabase
-    .from('businesses')
-    .select('*')
-    .order('rating', { ascending: false })
-  
-  if (error) {
-    console.error('Error fetching businesses:', error)
-    return []
-  }
-  
-  return (data as BusinessRow[]).map(mapRowToBusiness)
-}
-
-export async function getBusinessById(id: string): Promise<Business | null> {
-  const supabase = createClient()
-  
-  const { data, error } = await supabase
-    .from('businesses')
-    .select('*')
-    .eq('id', id)
-    .single()
-  
-  if (error) {
-    console.error('Error fetching business:', error)
-    return null
-  }
-  
-  return mapRowToBusiness(data as BusinessRow)
-}
-
-export async function getBusinessesByCategory(category: string): Promise<Business[]> {
-  const supabase = createClient()
-  
-  let query = supabase.from('businesses').select('*')
-  
-  if (category !== 'all') {
-    query = query.eq('category', category)
-  }
-  
-  const { data, error } = await query.order('rating', { ascending: false })
-  
-  if (error) {
-    console.error('Error fetching businesses:', error)
-    return []
-  }
-  
-  return (data as BusinessRow[]).map(mapRowToBusiness)
 }
