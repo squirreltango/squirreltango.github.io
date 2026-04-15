@@ -1,8 +1,8 @@
 import { createClient } from "@/lib/supabase/server"
-import { NextResponse } from "next/server"
 import type { Business, GalleryImage, RatingsSummary } from "@/lib/data"
 
 export const dynamic = "force-dynamic"
+export const revalidate = 0
 
 // Database row type (snake_case from Supabase)
 interface BusinessRow {
@@ -62,14 +62,14 @@ export async function GET(
 
     if (error) {
       console.error("[v0] Error fetching business:", error)
-      return NextResponse.json(
+      return Response.json(
         { error: error.message }, 
         { status: 404 }
       )
     }
 
     if (!data) {
-      return NextResponse.json(
+      return Response.json(
         { error: "Business not found" }, 
         { status: 404 }
       )
@@ -77,10 +77,10 @@ export async function GET(
 
     const business = mapRowToBusiness(data as BusinessRow)
     
-    return NextResponse.json(business)
+    return Response.json(business)
   } catch (err) {
     console.error("[v0] Unexpected error in /api/businesses/[id]:", err)
-    return NextResponse.json(
+    return Response.json(
       { error: "Internal server error" }, 
       { status: 500 }
     )
