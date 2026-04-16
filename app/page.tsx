@@ -29,13 +29,16 @@ export default function HomePage() {
   // State for Supabase data
   const [businesses, setBusinesses] = useState<Business[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [fetchError, setFetchError] = useState<string | null>(null)
 
   // Fetch businesses from Supabase on mount
   useEffect(() => {
     async function loadBusinesses() {
       setIsLoading(true)
-      const data = await fetchBusinesses()
+      setFetchError(null)
+      const { data, error } = await fetchBusinesses()
       setBusinesses(data)
+      setFetchError(error)
       setIsLoading(false)
     }
     loadBusinesses()
@@ -167,6 +170,22 @@ export default function HomePage() {
             {sortBy === "instagram_followers" && "Sorted by popularity"}
           </div>
         </div>
+
+        {/* Error Display */}
+        {fetchError && (
+          <div className="mb-8 p-6 rounded-2xl bg-destructive/10 border border-destructive/20">
+            <h3 className="text-lg font-semibold text-destructive mb-2">Error fetching data</h3>
+            <p className="text-sm text-destructive/80">{fetchError}</p>
+          </div>
+        )}
+
+        {/* No Data Display */}
+        {!isLoading && !fetchError && businesses.length === 0 && (
+          <div className="mb-8 p-6 rounded-2xl bg-amber-50 border border-amber-200">
+            <h3 className="text-lg font-semibold text-amber-800 mb-2">No data returned from Supabase</h3>
+            <p className="text-sm text-amber-700">The businesses table may be empty or the query returned no results.</p>
+          </div>
+        )}
 
         {/* Content */}
         {isLoading || isAISearching ? (

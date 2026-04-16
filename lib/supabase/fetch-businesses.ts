@@ -41,39 +41,51 @@ function mapRowToBusiness(row: BusinessRow): Business {
   }
 }
 
-export async function fetchBusinesses(): Promise<Business[]> {
+export async function fetchBusinesses(): Promise<{ data: Business[]; error: string | null }> {
+  console.log("[v0] Fetching businesses from Supabase...")
+  
   const { data, error } = await supabase
     .from("businesses")
     .select("*")
-    .order("created_at", { ascending: false })
+
+  console.log("[v0] Supabase data:", data)
+  console.log("[v0] Supabase error:", error)
 
   if (error) {
     console.error("[v0] Error fetching businesses:", error.message)
-    return []
+    return { data: [], error: error.message }
   }
 
   if (!data || data.length === 0) {
-    return []
+    console.log("[v0] No data returned from Supabase")
+    return { data: [], error: null }
   }
 
-  return (data as BusinessRow[]).map(mapRowToBusiness)
+  console.log("[v0] Successfully fetched", data.length, "businesses")
+  return { data: (data as BusinessRow[]).map(mapRowToBusiness), error: null }
 }
 
-export async function fetchBusinessById(id: string): Promise<Business | null> {
+export async function fetchBusinessById(id: string): Promise<{ data: Business | null; error: string | null }> {
+  console.log("[v0] Fetching business by ID:", id)
+  
   const { data, error } = await supabase
     .from("businesses")
     .select("*")
     .eq("id", id)
     .single()
 
+  console.log("[v0] Supabase data:", data)
+  console.log("[v0] Supabase error:", error)
+
   if (error) {
     console.error("[v0] Error fetching business:", error.message)
-    return null
+    return { data: null, error: error.message }
   }
 
   if (!data) {
-    return null
+    console.log("[v0] No data returned from Supabase for ID:", id)
+    return { data: null, error: null }
   }
 
-  return mapRowToBusiness(data as BusinessRow)
+  return { data: mapRowToBusiness(data as BusinessRow), error: null }
 }

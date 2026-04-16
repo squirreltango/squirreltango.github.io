@@ -51,13 +51,16 @@ export default function BusinessDetailPage({ params }: { params: Promise<{ id: s
   const [isSaved, setIsSaved] = useState(false)
   const [business, setBusiness] = useState<Business | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [fetchError, setFetchError] = useState<string | null>(null)
 
   // Fetch business from Supabase
   useEffect(() => {
     async function loadBusiness() {
       setIsLoading(true)
-      const data = await fetchBusinessById(id)
+      setFetchError(null)
+      const { data, error } = await fetchBusinessById(id)
       setBusiness(data)
+      setFetchError(error)
       setIsLoading(false)
     }
     loadBusiness()
@@ -75,8 +78,28 @@ export default function BusinessDetailPage({ params }: { params: Promise<{ id: s
     )
   }
 
+  if (fetchError) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-8">
+        <div className="max-w-md w-full p-6 rounded-2xl bg-destructive/10 border border-destructive/20">
+          <h3 className="text-lg font-semibold text-destructive mb-2">Error fetching data</h3>
+          <p className="text-sm text-destructive/80 mb-4">{fetchError}</p>
+          <Link href="/" className="text-sm text-foreground underline">Back to home</Link>
+        </div>
+      </div>
+    )
+  }
+
   if (!business) {
-    notFound()
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-8">
+        <div className="max-w-md w-full p-6 rounded-2xl bg-amber-50 border border-amber-200">
+          <h3 className="text-lg font-semibold text-amber-800 mb-2">No data returned from Supabase</h3>
+          <p className="text-sm text-amber-700 mb-4">Business with ID &quot;{id}&quot; was not found.</p>
+          <Link href="/" className="text-sm text-foreground underline">Back to home</Link>
+        </div>
+      </div>
+    )
   }
 
   return (
