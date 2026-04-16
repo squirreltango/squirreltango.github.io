@@ -1,16 +1,14 @@
 "use client"
 
-import { use, useState } from "react"
-import useSWR from "swr"
+import { use, useState, useEffect } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { ArrowLeft, Star, MapPin, Heart, Share2, Clock, Phone, Globe, ChevronRight, Instagram, ShieldCheck, Building2, TrendingUp, ExternalLink, Loader2 } from "lucide-react"
-import { businesses as mockBusinesses, type Business } from "@/lib/data"
+import { type Business } from "@/lib/data"
 import { PhotoGallery } from "@/components/photo-gallery"
 import { cn } from "@/lib/utils"
 import { notFound } from "next/navigation"
-
-const fetcher = (url: string) => fetch(url).then((res) => res.json())
+import { fetchBusinessById } from "@/lib/supabase/fetch-businesses"
 
 interface Review {
   id: string
@@ -51,24 +49,22 @@ const mockReviews: Review[] = [
 export default function BusinessDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const [isSaved, setIsSaved] = useState(false)
+  const [business, setBusiness] = useState<Business | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
 
-  // Fetch from Supabase API
-  const { data: supabaseBusiness, isLoading } = useSWR<Business>(
-    `/api/businesses/${id}`,
-    fetcher,
-    { revalidateOnFocus: false }
-  )
-
-  // Fallback to mock data if Supabase returns nothing
-  const mockBusiness = mockBusinesses.find((b) => b.id === id)
-  const business = supabaseBusiness || mockBusiness
-
-  if (!isLoading && !business) {
-    notFound()
-  }
+  // Fetch business from Supabase
+  useEffect(() => {
+    async function loadBusiness() {
+      setIsLoading(true)
+      const data = await fetchBusinessById(id)
+      setBusiness(data)
+      setIsLoading(false)
+    }
+    loadBusiness()
+  }, [id])
 
   // Show loading skeleton while fetching
-  if (isLoading && !mockBusiness) {
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
@@ -80,7 +76,7 @@ export default function BusinessDetailPage({ params }: { params: Promise<{ id: s
   }
 
   if (!business) {
-    return null
+    notFound()
   }
 
   return (
