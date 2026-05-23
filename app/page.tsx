@@ -165,7 +165,7 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-background">
       <Header
-          onOpenAuth={() => setAuthModalOpen(true)}
+        onOpenAuth={() => setAuthModalOpen(true)}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
       />
