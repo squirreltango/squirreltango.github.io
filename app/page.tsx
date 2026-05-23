@@ -115,7 +115,6 @@ export default function HomePage() {
     setIsAISearching(false)
   }
 }
-
   const handleClearAISearch = () => {
     setSearchQuery("")
     setAISearchQuery(null)
