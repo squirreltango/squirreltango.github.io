@@ -1,7 +1,7 @@
 import { supabase } from "./client"
-import type { Business, GalleryImage, RatingsSummary } from "@/lib/data"
+import type { Business, GalleryImage } from "@/lib/data"
 
-// Database row type from Supabase
+// Database row type from Supabase (flat structure)
 interface BusinessRow {
   id: string
   name: string
@@ -11,17 +11,22 @@ interface BusinessRow {
   location: string
   description: string
   image: string
-  images: string[]
-  gallery: GalleryImage[] | null
-  coordinates: { lat: number; lng: number }
+  image_urls: string[] | null
+  lat: number | null
+  lng: number | null
   price_level: string
   tags: string[]
-  ratings: RatingsSummary
+  // Flat rating fields from Supabase
+  google_rating: number | null
+  google_reviews: number | null
+  instagram_followers: number | null
+  instagram_trending: boolean | null
+  food_hygiene: number | null
+  booking_com_rating: number | null
   created_at?: string
-  updated_at?: string
 }
 
-// Map Supabase row (snake_case) to local Business type (camelCase)
+// Map Supabase row (flat structure) to local Business type (nested structure)
 function mapRowToBusiness(row: BusinessRow): Business {
   return {
     id: row.id,
@@ -32,12 +37,26 @@ function mapRowToBusiness(row: BusinessRow): Business {
     location: row.location,
     description: row.description,
     image: row.image,
-    images: row.images || [],
-    gallery: row.gallery || [],
-    coordinates: row.coordinates,
+    images: row.image_urls || [row.image],
+    gallery: [] as GalleryImage[],
+    coordinates: { 
+      lat: row.lat ?? 51.5074, 
+      lng: row.lng ?? -0.1278 
+    },
     priceLevel: row.price_level,
     tags: row.tags || [],
-    ratings: row.ratings,
+    ratings: {
+      google: { 
+        rating: row.google_rating ?? row.rating, 
+        reviews: row.google_reviews ?? row.review_count 
+      },
+      instagram: row.instagram_followers ? {
+        followers: row.instagram_followers,
+        trending: row.instagram_trending ?? false
+      } : undefined,
+      foodHygiene: row.food_hygiene ?? undefined,
+      bookingCom: row.booking_com_rating ?? undefined,
+    },
   }
 }
 
