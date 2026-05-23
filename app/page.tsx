@@ -104,17 +104,10 @@ export default function HomePage() {
     },
   }))
 
-  setBusinesses(mappedBusinesses)
   setSearchQuery(query)
   setAISearchQuery(query)
   setIsAISearching(false)
 }
-    setTimeout(() => {
-      setSearchQuery(query)
-      setAISearchQuery(query)
-      setIsAISearching(false)
-    }, 1200)
-  }
 
   const handleClearAISearch = () => {
     setSearchQuery("")
