@@ -73,8 +73,42 @@ export default function HomePage() {
     }
   }
 
-  const handleAISearch = (query: string) => {
-    setIsAISearching(true)
+  const handleAISearch = async (query: string) => {
+  setIsAISearching(true)
+
+  const res = await fetch(`/api/google-places?query=${encodeURIComponent(query)}`)
+  const googleData = await res.json()
+
+  const mappedBusinesses = googleData.results.map((place: any) => ({
+    id: place.place_id,
+    name: place.name,
+    category: "Google Result",
+    rating: place.rating || 0,
+    reviewCount: place.user_ratings_total || 0,
+    location: place.formatted_address || place.vicinity || "London",
+    description: place.types?.join(", ") || "Google business result",
+    image: "/placeholder.svg",
+    images: ["/placeholder.svg"],
+    gallery: [],
+    coordinates: {
+      lat: place.geometry?.location?.lat || 51.5074,
+      lng: place.geometry?.location?.lng || -0.1278,
+    },
+    priceLevel: place.price_level ? "£".repeat(place.price_level) : "££",
+    tags: place.types || [],
+    ratings: {
+      google: {
+        rating: place.rating || 0,
+        reviews: place.user_ratings_total || 0,
+      },
+    },
+  }))
+
+  setBusinesses(mappedBusinesses)
+  setSearchQuery(query)
+  setAISearchQuery(query)
+  setIsAISearching(false)
+}
     setTimeout(() => {
       setSearchQuery(query)
       setAISearchQuery(query)
