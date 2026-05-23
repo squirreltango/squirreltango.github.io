@@ -163,146 +163,150 @@ export default function HomePage() {
   }, [businesses, searchQuery, activeCategory, sortBy, filters])
 
   return (
-      <div className="min-h-screen bg-background">
-        <Header
+    <div className="min-h-screen bg-background">
+      <Header
           onOpenAuth={() => setAuthModalOpen(true)}
-          viewMode={viewMode}
-          onViewModeChange={setViewMode} />
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+      />
 
-        <main className="max-w-7xl mx-auto px-5 sm:px-8 py-10 sm:py-14">
-          {/* Database Status Banner */}
-          {isUsingMockData && !isLoading && (
-            <div className="mb-8 p-4 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-between gap-4 flex-wrap">
-              <div>
-                <p className="text-sm font-medium text-amber-800">Using demo data</p>
-                <p className="text-xs text-amber-600">Connect to Supabase to use real data</p>
-              </div>
-              <button
-                onClick={handleSetupDatabase}
-                disabled={isSettingUp}
-                className="px-4 py-2 rounded-lg bg-amber-600 text-white text-sm font-medium hover:bg-amber-700 transition-colors disabled:opacity-50 flex items-center gap-2"
-              >
-                {isSettingUp && <Loader2 className="h-4 w-4 animate-spin" />}
-                {isSettingUp ? "Setting up..." : "Setup Database"}
-              </button>
+      <main className="max-w-7xl mx-auto px-5 sm:px-8 py-10 sm:py-14">
+        {/* Database Status Banner */}
+        {isUsingMockData && !isLoading && (
+          <div className="mb-8 p-4 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-between gap-4 flex-wrap">
+            <div>
+              <p className="text-sm font-medium text-amber-800">Using demo data</p>
+              <p className="text-xs text-amber-600">Connect to Supabase to use real data</p>
             </div>
-          )}
+            <button
+              onClick={handleSetupDatabase}
+              disabled={isSettingUp}
+              className="px-4 py-2 rounded-lg bg-amber-600 text-white text-sm font-medium hover:bg-amber-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+            >
+              {isSettingUp && <Loader2 className="h-4 w-4 animate-spin" />}
+              {isSettingUp ? "Setting up..." : "Setup Database"}
+            </button>
+          </div>
+        )}
 
-          {/* Hero Section */}
-          <div className="mb-12 max-w-2xl">
-            <p className="text-sm font-medium tracking-widest uppercase text-muted-foreground mb-4">Discover London</p>
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-serif font-semibold text-foreground mb-5 leading-[1.1] text-balance">
-              Find extraordinary places near you
-            </h1>
-            <p className="text-lg sm:text-xl text-muted-foreground leading-relaxed">
-              Curated restaurants, wellness spots, and hidden gems handpicked for curious locals.
+        {/* Hero Section */}
+        <div className="mb-12 max-w-2xl">
+          <p className="text-sm font-medium tracking-widest uppercase text-muted-foreground mb-4">Discover London</p>
+          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-serif font-semibold text-foreground mb-5 leading-[1.1] text-balance">
+            Find extraordinary places near you
+          </h1>
+          <p className="text-lg sm:text-xl text-muted-foreground leading-relaxed">
+            Curated restaurants, wellness spots, and hidden gems handpicked for curious locals.
+          </p>
+        </div>
+
+        {/* AI Search */}
+        <div className="mb-12">
+          <AISearch
+            onSearch={handleAISearch}
+            isSearching={isAISearching}
+            activeQuery={aiSearchQuery}
+            onClearSearch={handleClearAISearch}
+          />
+        </div>
+
+        {/* AI Picks Section - Only show when not searching */}
+        {!aiSearchQuery && !isAISearching && (
+          <AIPicks businesses={businesses} />
+        )}
+
+        {/* Categories */}
+        <div className="mb-8">
+          <CategoryFilter
+            categories={categories}
+            activeCategory={activeCategory}
+            onCategoryChange={setActiveCategory}
+          />
+        </div>
+
+        {/* Filters & Sort */}
+        <div className="mb-8">
+          <FilterBar
+            sortBy={sortBy}
+            onSortChange={setSortBy}
+            filters={filters}
+            onFiltersChange={setFilters}
+            activeFilterCount={activeFilterCount}
+          />
+        </div>
+
+        {/* Results Header */}
+        <div className="flex items-center justify-between mb-8 pb-6 border-b border-border/60">
+          <div>
+            <p className="text-sm text-muted-foreground">
+              Showing <span className="font-semibold text-foreground">{filteredBusinesses.length}</span>{" "}
+              {filteredBusinesses.length === 1 ? "place" : "places"}
+              {activeFilterCount > 0 && (
+                <span className="ml-2 text-xs text-muted-foreground">
+                  ({activeFilterCount} {activeFilterCount === 1 ? "filter" : "filters"} active)
+                </span>
+              )}
             </p>
           </div>
-
-          {/* AI Search */}
-          <div className="mb-12">
-            <AISearch
-              onSearch={handleAISearch}
-              isSearching={isAISearching}
-              activeQuery={aiSearchQuery}
-              onClearSearch={handleClearAISearch} />
+          <div className="text-sm text-muted-foreground">
+            {sortBy === "relevance" && "Sorted by relevance"}
+            {sortBy === "google_rating" && "Sorted by Google rating"}
+            {sortBy === "instagram_followers" && "Sorted by popularity"}
           </div>
+        </div>
 
-          {/* AI Picks Section - Only show when not searching */}
-          {!aiSearchQuery && !isAISearching && (
-            <AIPicks businesses={businesses} />
-          )}
-
-          {/* Categories */}
-          <div className="mb-8">
-            <CategoryFilter
-              categories={categories}
-              activeCategory={activeCategory}
-              onCategoryChange={setActiveCategory} />
-          </div>
-
-          {/* Filters & Sort */}
-          <div className="mb-8">
-            <FilterBar
-              sortBy={sortBy}
-              onSortChange={setSortBy}
-              filters={filters}
-              onFiltersChange={setFilters}
-              activeFilterCount={activeFilterCount} />
-          </div>
-
-          {/* Results Header */}
-          <div className="flex items-center justify-between mb-8 pb-6 border-b border-border/60">
-            <div>
-              <p className="text-sm text-muted-foreground">
-                Showing <span className="font-semibold text-foreground">{filteredBusinesses.length}</span>{" "}
-                {filteredBusinesses.length === 1 ? "place" : "places"}
-                {activeFilterCount > 0 && (
-                  <span className="ml-2 text-xs text-muted-foreground">
-                    ({activeFilterCount} {activeFilterCount === 1 ? "filter" : "filters"} active)
-                  </span>
-                )}
-              </p>
-            </div>
-            <div className="text-sm text-muted-foreground">
-              {sortBy === "relevance" && "Sorted by relevance"}
-              {sortBy === "google_rating" && "Sorted by Google rating"}
-              {sortBy === "instagram_followers" && "Sorted by popularity"}
-            </div>
-          </div>
-
-          {/* Content */}
-          {isLoading || isAISearching ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
-              {[1, 2, 3, 4, 5, 6].map((i) => (
-                <div key={i} className="animate-pulse">
-                  <div className="aspect-[4/3] rounded-2xl bg-secondary/60 mb-4" />
-                  <div className="h-5 bg-secondary/60 rounded-lg w-3/4 mb-3" />
-                  <div className="h-4 bg-secondary/40 rounded-lg w-1/2 mb-3" />
-                  <div className="h-4 bg-secondary/40 rounded-lg w-full mb-2" />
-                  <div className="h-4 bg-secondary/40 rounded-lg w-2/3" />
-                </div>
-              ))}
-            </div>
-          ) : viewMode === "list" ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
-              {filteredBusinesses.map((business) => (
-                <BusinessCard key={business.id} business={business} searchQuery={aiSearchQuery} />
-              ))}
-            </div>
-          ) : (
-            <MapView businesses={filteredBusinesses} />
-          )}
-
-          {filteredBusinesses.length === 0 && !isLoading && (
-            <div className="text-center py-24">
-              <div className="w-16 h-16 rounded-3xl bg-secondary flex items-center justify-center mx-auto mb-6">
-                <span className="text-3xl text-muted-foreground">?</span>
+        {/* Content */}
+        {isLoading || isAISearching ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <div key={i} className="animate-pulse">
+                <div className="aspect-[4/3] rounded-2xl bg-secondary/60 mb-4" />
+                <div className="h-5 bg-secondary/60 rounded-lg w-3/4 mb-3" />
+                <div className="h-4 bg-secondary/40 rounded-lg w-1/2 mb-3" />
+                <div className="h-4 bg-secondary/40 rounded-lg w-full mb-2" />
+                <div className="h-4 bg-secondary/40 rounded-lg w-2/3" />
               </div>
-              <h3 className="text-xl font-serif font-semibold text-foreground mb-2">No places found</h3>
-              <p className="text-muted-foreground mb-6">Try adjusting your search or filters</p>
-              <button
-                onClick={() => {
-                  setSearchQuery("")
-                  setActiveCategory("all")
-                  setSortBy("relevance")
-                  setFilters({
-                    trendingOnly: false,
-                    minFoodHygiene: null,
-                    hasBookingRating: false,
-                  })
-                  setAISearchQuery(null)
-                  setAISearchResults(null)
-                }}
-                className="px-6 py-3 rounded-full bg-foreground text-background text-sm font-medium hover:bg-foreground/90 transition-colors"
-              >
-                Clear all filters
-              </button>
-            </div>
-          )}
-        </main>
+            ))}
+          </div>
+        ) : viewMode === "list" ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+            {filteredBusinesses.map((business) => (
+              <BusinessCard key={business.id} business={business} searchQuery={aiSearchQuery} />
+            ))}
+          </div>
+        ) : (
+          <MapView businesses={filteredBusinesses} />
+        )}
 
-        <AuthModal isOpen={authModalOpen} onClose={() => setAuthModalOpen(false)} />
+        {filteredBusinesses.length === 0 && !isLoading && (
+          <div className="text-center py-24">
+            <div className="w-16 h-16 rounded-3xl bg-secondary flex items-center justify-center mx-auto mb-6">
+              <span className="text-3xl text-muted-foreground">?</span>
+            </div>
+            <h3 className="text-xl font-serif font-semibold text-foreground mb-2">No places found</h3>
+            <p className="text-muted-foreground mb-6">Try adjusting your search or filters</p>
+            <button
+              onClick={() => {
+                setSearchQuery("")
+                setActiveCategory("all")
+                setSortBy("relevance")
+                setFilters({
+                  trendingOnly: false,
+                  minFoodHygiene: null,
+                  hasBookingRating: false,
+                })
+                setAISearchQuery(null)
+                setAISearchResults(null)
+              }}
+              className="px-6 py-3 rounded-full bg-foreground text-background text-sm font-medium hover:bg-foreground/90 transition-colors"
+            >
+              Clear all filters
+            </button>
+          </div>
+        )}
+      </main>
+
+      <AuthModal isOpen={authModalOpen} onClose={() => setAuthModalOpen(false)} />
     </div>
   )
 }
