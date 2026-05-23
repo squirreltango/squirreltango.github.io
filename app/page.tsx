@@ -28,6 +28,7 @@ export default function HomePage() {
   })
   const [isAISearching, setIsAISearching] = useState(false)
   const [aiSearchQuery, setAISearchQuery] = useState<string | null>(null)
+  const [aiSearchResults, setAISearchResults] = useState<Business[] | null>(null)
   const [isSettingUp, setIsSettingUp] = useState(false)
 
   // Fetch businesses from Supabase
@@ -41,7 +42,7 @@ export default function HomePage() {
   )
 
   // Use Supabase data if available, otherwise fallback to mock data
-  const businesses = useMemo(() => {
+  const baseBusinesses = useMemo(() => {
     if (supabaseBusinesses && supabaseBusinesses.length > 0) {
       return supabaseBusinesses
     }
@@ -51,6 +52,9 @@ export default function HomePage() {
     }
     return mockBusinesses
   }, [supabaseBusinesses, error])
+
+  // Use AI search results if available, otherwise use base businesses
+  const businesses = aiSearchResults || baseBusinesses
 
   const isUsingMockData = !supabaseBusinesses || supabaseBusinesses.length === 0 || error
 
@@ -105,7 +109,7 @@ export default function HomePage() {
       },
     }))
 
-    setBusinesses(mappedBusinesses as Business[])
+    setAISearchResults(mappedBusinesses as Business[])
     setSearchQuery(query)
     setAISearchQuery(query)
 
@@ -118,6 +122,7 @@ export default function HomePage() {
   const handleClearAISearch = () => {
     setSearchQuery("")
     setAISearchQuery(null)
+    setAISearchResults(null)
   }
 
   const activeFilterCount = useMemo(() => {
