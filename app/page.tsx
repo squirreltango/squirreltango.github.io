@@ -73,47 +73,48 @@ export default function HomePage() {
     }
   }
 
-  async function handleAISearch(query: string) {
-    setIsAISearching(true)
-    try {
-      const res = await fetch(`/api/google-places?query=${encodeURIComponent(query)}`)
-      const googleData = await res.json()
+  const handleAISearch = async (query: string) => {
+  setIsAISearching(true)
 
-      const mappedBusinesses = googleData.results.map((place: any) => ({
-        id: place.place_id,
-        name: place.name,
-        category: "Google Result",
-        rating: place.rating || 0,
-        reviewCount: place.user_ratings_total || 0,
-        location: place.formatted_address || place.vicinity || "London",
-        description: place.types?.join(", ") || "Google business result",
-        image: "/placeholder.svg",
-        images: ["/placeholder.svg"],
-        gallery: [],
-        coordinates: {
-          lat: place.geometry?.location?.lat || 51.5074,
-          lng: place.geometry?.location?.lng || -0.1278,
-        },
-        priceLevel: place.price_level ? "£".repeat(place.price_level) : "££",
-        tags: place.types || [],
-        ratings: {
-          google: {
-            rating: place.rating || 0,
-            reviews: place.user_ratings_total || 0,
-          },
-        },
-      }))
+  try {
+    const res = await fetch(`/api/google-places?query=${encodeURIComponent(query)}`)
+    const googleData = await res.json()
 
-      setSearchQuery(query)
-      setAISearchQuery(query)
-    } catch (err) {
-      console.error("AI Search failed:", err)
-    } finally {
-      setIsAISearching(false)
-    }
+    const mappedBusinesses = (googleData.results || []).map((place: any) => ({
+      id: place.place_id,
+      name: place.name,
+      category: "Google Result",
+      rating: place.rating || 0,
+      reviewCount: place.user_ratings_total || 0,
+      location: place.formatted_address || place.vicinity || "London",
+      description: place.types?.join(", ") || "Google business result",
+      image: "/placeholder.svg",
+      images: ["/placeholder.svg"],
+      gallery: [],
+      coordinates: {
+        lat: place.geometry?.location?.lat || 51.5074,
+        lng: place.geometry?.location?.lng || -0.1278,
+      },
+      priceLevel: place.price_level ? "£".repeat(place.price_level) : "££",
+      tags: place.types || [],
+      ratings: {
+        google: {
+          rating: place.rating || 0,
+          reviews: place.user_ratings_total || 0,
+        },
+      },
+    }))
+
+    setBusinesses(mappedBusinesses)
+    setSearchQuery(query)
+    setAISearchQuery(query)
+
+  } catch (error) {
+    console.error("Google search failed:", error)
+  } finally {
+    setIsAISearching(false)
   }
-
-  const handleClearAISearch = () => {
+}
     setSearchQuery("")
     setAISearchQuery(null)
   }
