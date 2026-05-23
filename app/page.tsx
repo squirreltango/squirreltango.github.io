@@ -106,54 +106,55 @@ export default function HomePage() {
 
       setSearchQuery(query)
       setAISearchQuery(query)
+    } catch (err) {
+      console.error("AI Search failed:", err)
+    } finally {
       setIsAISearching(false)
     }
+  }
 
-    finally {
+  const handleClearAISearch = () => {
+    setSearchQuery("")
+    setAISearchQuery(null)
+  }
+
+  const activeFilterCount = useMemo(() => {
+    let count = 0
+    if (sortBy !== "relevance") count++
+    if (filters.trendingOnly) count++
+    if (filters.minFoodHygiene !== null) count++
+    if (filters.hasBookingRating) count++
+    return count
+  }, [sortBy, filters])
+
+  const filteredBusinesses = useMemo(() => {
+    let result = businesses.filter((business) => {
+      const matchesSearch = business.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        business.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        business.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        business.tags.some((tag) => tag.toLowerCase().includes(searchQuery.toLowerCase()))
+
+      const matchesCategory = activeCategory === "all" || business.category === activeCategory
+
+      const matchesTrending = !filters.trendingOnly || business.ratings.instagram?.trending === true
+      const matchesFoodHygiene = filters.minFoodHygiene === null ||
+        (business.ratings.foodHygiene !== undefined && business.ratings.foodHygiene >= filters.minFoodHygiene)
+      const matchesBooking = !filters.hasBookingRating || business.ratings.bookingCom !== undefined
+
+      return matchesSearch && matchesCategory && matchesTrending && matchesFoodHygiene && matchesBooking
+    })
+
+    if (sortBy === "google_rating") {
+      result = [...result].sort((a, b) => b.ratings.google.rating - a.ratings.google.rating)
+    } else if (sortBy === "instagram_followers") {
+      result = [...result].sort((a, b) => (b.ratings.instagram?.followers || 0) - (a.ratings.instagram?.followers || 0)
+      )
     }
 
-    const handleClearAISearch = () => {
-      setSearchQuery("")
-      setAISearchQuery(null)
-    }
+    return result
+  }, [businesses, searchQuery, activeCategory, sortBy, filters])
 
-    const activeFilterCount = useMemo(() => {
-      let count = 0
-      if (sortBy !== "relevance") count++
-      if (filters.trendingOnly) count++
-      if (filters.minFoodHygiene !== null) count++
-      if (filters.hasBookingRating) count++
-      return count
-    }, [sortBy, filters])
-
-    const filteredBusinesses = useMemo(() => {
-      let result = businesses.filter((business) => {
-        const matchesSearch = business.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          business.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          business.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          business.tags.some((tag) => tag.toLowerCase().includes(searchQuery.toLowerCase()))
-
-        const matchesCategory = activeCategory === "all" || business.category === activeCategory
-
-        const matchesTrending = !filters.trendingOnly || business.ratings.instagram?.trending === true
-        const matchesFoodHygiene = filters.minFoodHygiene === null ||
-          (business.ratings.foodHygiene !== undefined && business.ratings.foodHygiene >= filters.minFoodHygiene)
-        const matchesBooking = !filters.hasBookingRating || business.ratings.bookingCom !== undefined
-
-        return matchesSearch && matchesCategory && matchesTrending && matchesFoodHygiene && matchesBooking
-      })
-
-      if (sortBy === "google_rating") {
-        result = [...result].sort((a, b) => b.ratings.google.rating - a.ratings.google.rating)
-      } else if (sortBy === "instagram_followers") {
-        result = [...result].sort((a, b) => (b.ratings.instagram?.followers || 0) - (a.ratings.instagram?.followers || 0)
-        )
-      }
-
-      return result
-    }, [businesses, searchQuery, activeCategory, sortBy, filters])
-
-    return (
+  return (
       <div className="min-h-screen bg-background">
         <Header
           onOpenAuth={() => setAuthModalOpen(true)}
@@ -293,6 +294,6 @@ export default function HomePage() {
         </main>
 
         <AuthModal isOpen={authModalOpen} onClose={() => setAuthModalOpen(false)} />
-      </div>
-    )
-  }
+    </div>
+  )
+}
