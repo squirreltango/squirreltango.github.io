@@ -134,14 +134,16 @@ export default function HomePage() {
       const matchesSearch = business.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         business.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
         business.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        business.tags.some((tag) => tag.toLowerCase().includes(searchQuery.toLowerCase()))
+        (business.tags || []).some((tag) =>
+  tag.toLowerCase().includes(searchQuery.toLowerCase())
+)
 
       const matchesCategory = activeCategory === "all" || business.category === activeCategory
 
       const matchesTrending = !filters.trendingOnly || business.ratings.instagram?.trending === true
       const matchesFoodHygiene = filters.minFoodHygiene === null ||
         (business.ratings.foodHygiene !== undefined && business.ratings.foodHygiene >= filters.minFoodHygiene)
-      const matchesBooking = !filters.hasBookingRating || business.ratings.bookingCom !== undefined
+      const matchesBooking = !filters.hasBookingRating || business.ratings?.bookingCom !== undefined
 
       return matchesSearch && matchesCategory && matchesTrending && matchesFoodHygiene && matchesBooking
     })
