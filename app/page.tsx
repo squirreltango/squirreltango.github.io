@@ -75,7 +75,7 @@ export default function HomePage() {
 
   const handleAISearch = async (query: string) => {
   setIsAISearching(true)
-
+  try {
   const res = await fetch(`/api/google-places?query=${encodeURIComponent(query)}`)
   const googleData = await res.json()
 
