@@ -105,7 +105,7 @@ export default function HomePage() {
       },
     }))
 
-    setBusinesses(mappedBusinesses)
+    setBusinesses(mappedBusinesses as Business[])
     setSearchQuery(query)
     setAISearchQuery(query)
 
