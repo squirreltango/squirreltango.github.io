@@ -137,12 +137,14 @@ export default function HomePage() {
 
   const filteredBusinesses = useMemo(() => {
     let result = businesses.filter((business) => {
-      const matchesSearch = business.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      // Skip text search filter when AI search results are active (Google already filtered them)
+      const matchesSearch = aiSearchResults !== null || 
+        business.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         business.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
         business.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
         (business.tags || []).some((tag) =>
-  tag.toLowerCase().includes(searchQuery.toLowerCase())
-)
+          tag.toLowerCase().includes(searchQuery.toLowerCase())
+        )
 
       const matchesCategory = activeCategory === "all" || business.category === activeCategory
 
@@ -162,7 +164,7 @@ export default function HomePage() {
     }
 
     return result
-  }, [businesses, searchQuery, activeCategory, sortBy, filters])
+  }, [businesses, searchQuery, activeCategory, sortBy, filters, aiSearchResults])
 
   return (
     <div className="min-h-screen bg-background">
