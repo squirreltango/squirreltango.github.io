@@ -210,7 +210,7 @@ export default function BusinessDetailPage({ params }: { params: Promise<{ id: s
               <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4">Ratings Breakdown</h3>
               <div className="grid grid-cols-2 gap-3">
                 {/* Instagram */}
-                {business.ratings.instagram && (
+                {business.ratings?.instagram && (
                   <div className={cn(
                     "flex flex-col gap-2 p-4 rounded-2xl bg-secondary/40 border border-border/30",
                     "transition-all duration-300 hover:bg-secondary/60 hover:border-border/50"
@@ -273,7 +273,7 @@ export default function BusinessDetailPage({ params }: { params: Promise<{ id: s
                 </div>
 
                 {/* Food Hygiene Rating */}
-                {business.ratings.foodHygiene !== undefined && (
+                {business.ratings?.foodHygiene !== undefined && (
                   <div className={cn(
                     "flex flex-col gap-2 p-4 rounded-2xl border",
                     business.ratings.foodHygiene >= 4 
@@ -339,7 +339,7 @@ export default function BusinessDetailPage({ params }: { params: Promise<{ id: s
                 )}
 
                 {/* Booking.com Rating - Only for hotels */}
-                {business.ratings.bookingCom !== undefined && (
+                {business.ratings?.bookingCom !== undefined && (
                   <div className={cn(
                     "flex flex-col gap-2 p-4 rounded-2xl bg-blue-50/50 border border-blue-200/50",
                     "transition-all duration-300 hover:shadow-sm"
