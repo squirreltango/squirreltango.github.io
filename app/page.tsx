@@ -81,10 +81,10 @@ export default function HomePage() {
     setIsAISearching(true)
 
     try {
-      const res = await fetch(`/api/google-places?query=${encodeURIComponent(query)}`)
+      const res = await fetch(`/api/google-places?query=${encodeURIComponent(query)}`, {
+        cache: "no-store"
+      })
       const googleData = await res.json()
-      console.log("[v0] Google API response:", googleData)
-      console.log("[v0] Results count:", googleData.results?.length || 0)
 
       const mappedBusinesses = (googleData.results || []).map((place: any) => ({
         id: place.place_id,
@@ -111,7 +111,6 @@ export default function HomePage() {
         },
       }))
 
-      console.log("[v0] Mapped businesses:", mappedBusinesses.length, mappedBusinesses)
       setAISearchResults(mappedBusinesses as Business[])
       setSearchQuery(query)
       setAISearchQuery(query)

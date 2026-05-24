@@ -68,10 +68,15 @@ export async function GET(request: NextRequest) {
     // If Google API returns an error (like referer restriction), fall back to mock data
     if (data.status === "REQUEST_DENIED" || data.status === "INVALID_REQUEST" || !data.results?.length) {
       console.log("[v0] Google API error or no results, returning mock data. Status:", data.status, "Error:", data.error_message)
-      return NextResponse.json(getMockResults(query))
+      const mockData = getMockResults(query)
+      return NextResponse.json(mockData, {
+        headers: { "Cache-Control": "no-store" }
+      })
     }
 
-    return NextResponse.json(data)
+    return NextResponse.json(data, {
+      headers: { "Cache-Control": "no-store" }
+    })
   } catch (error) {
     console.error("[v0] Google Places API error:", error)
     return NextResponse.json(getMockResults(query))
