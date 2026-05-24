@@ -188,7 +188,7 @@ export default function BusinessDetailPage({ params }: { params: Promise<{ id: s
               className="flex items-center gap-2 flex-wrap mb-8"
               style={{ animation: 'fadeInUp 0.4s ease-out 0.3s forwards', opacity: 0 }}
             >
-              {business.tags.map((tag, i) => (
+              {(business.tags || []).map((tag, i) => (
                 <span
                   key={tag}
                   className={cn(
