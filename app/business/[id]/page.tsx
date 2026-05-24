@@ -167,7 +167,7 @@ export default function BusinessDetailPage({ params }: { params: Promise<{ id: s
                 <div className="flex items-center gap-2 bg-secondary/80 px-3.5 py-2 rounded-full transition-all duration-300 hover:bg-amber-100">
                   <Star className="h-4 w-4 fill-amber-500 text-amber-500" />
                   <span className="font-semibold text-foreground">{business.rating}</span>
-                  <span className="text-muted-foreground text-sm">({business.reviewCount.toLocaleString()} reviews)</span>
+                  <span className="text-muted-foreground text-sm">({(business.reviewCount || 0).toLocaleString()} reviews)</span>
                 </div>
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <MapPin className="h-4 w-4" />
@@ -264,10 +264,10 @@ export default function BusinessDetailPage({ params }: { params: Promise<{ id: s
                   <div className="flex items-center gap-2">
                     <div className="flex items-center gap-1">
                       <Star className="h-5 w-5 fill-amber-500 text-amber-500" />
-                      <span className="text-lg font-semibold text-foreground">{business.ratings.google.rating}</span>
+                      <span className="text-lg font-semibold text-foreground">{business.ratings.google?.rating || business.rating || 0}</span>
                     </div>
                     <span className="text-sm text-muted-foreground">
-                      ({business.ratings.google.reviews.toLocaleString()} reviews)
+                      ({(business.ratings.google?.reviews || 0).toLocaleString()} reviews)
                     </span>
                   </div>
                 </div>
