@@ -264,10 +264,10 @@ export default function BusinessDetailPage({ params }: { params: Promise<{ id: s
                   <div className="flex items-center gap-2">
                     <div className="flex items-center gap-1">
                       <Star className="h-5 w-5 fill-amber-500 text-amber-500" />
-                      <span className="text-lg font-semibold text-foreground">{business.ratings.google?.rating || business.rating || 0}</span>
+                      <span className="text-lg font-semibold text-foreground">{business.ratings?.google?.rating || business.rating || 0}</span>
                     </div>
                     <span className="text-sm text-muted-foreground">
-                      ({(business.ratings.google?.reviews || 0).toLocaleString()} reviews)
+                      ({(business.ratings?.google?.reviews || 0).toLocaleString()} reviews)
                     </span>
                   </div>
                 </div>
