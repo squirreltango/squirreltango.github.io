@@ -65,9 +65,11 @@ export async function GET(request: NextRequest) {
     const response = await fetch(url)
     const data = await response.json()
 
+    console.log("[v0] Google API status:", data.status, "Results:", data.results?.length || 0)
+
     // If Google API returns an error (like referer restriction), fall back to mock data
     if (data.status === "REQUEST_DENIED" || data.status === "INVALID_REQUEST" || !data.results?.length) {
-      console.log("[v0] Google API error or no results, returning mock data. Status:", data.status, "Error:", data.error_message)
+      console.log("[v0] Falling back to mock data. Status:", data.status, "Error:", data.error_message)
       const mockData = getMockResults(query)
       return NextResponse.json(mockData, {
         headers: { "Cache-Control": "no-store" }
