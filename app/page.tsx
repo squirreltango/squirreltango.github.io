@@ -81,19 +81,20 @@ export default function HomePage() {
     setIsAISearching(true)
 
     try {
-      const res = await fetch(`/api/google-places?query=${encodeURIComponent(query)}`, {
+      // Use the new AI-powered search endpoint
+      const res = await fetch(`/api/ai-search?query=${encodeURIComponent(query)}`, {
         cache: "no-store"
       })
-      const googleData = await res.json()
+      const data = await res.json()
 
-      const mappedBusinesses = (googleData.results || []).map((place: any) => ({
+      const mappedBusinesses = (data.results || []).map((place: any) => ({
         id: place.place_id,
         name: place.name,
-        category: "Google Result",
+        category: data.aiContext?.aiPowered ? "AI Recommended" : "Google Result",
         rating: place.rating || 0,
         reviewCount: place.user_ratings_total || 0,
         location: place.formatted_address || place.vicinity || "London",
-        description: place.types?.join(", ") || "Google business result",
+        description: place.types?.join(", ") || "Recommended by AI",
         image: "/placeholder.svg",
         images: ["/placeholder.svg"],
         gallery: [],
@@ -112,10 +113,10 @@ export default function HomePage() {
       }))
 
       setAISearchResults(mappedBusinesses as Business[])
-      setSearchQuery(query)
+      setSearchQuery(data.aiContext?.optimizedQuery || query)
       setAISearchQuery(query)
     } catch (error) {
-      console.error("Google search failed:", error)
+      console.error("AI search failed:", error)
     } finally {
       setIsAISearching(false)
     }
