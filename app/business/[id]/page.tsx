@@ -5,48 +5,60 @@ import useSWR from "swr"
 import Image from "next/image"
 import Link from "next/link"
 import { ArrowLeft, Star, MapPin, Heart, Share2, Clock, Phone, Globe, ChevronRight, Instagram, ShieldCheck, Building2, TrendingUp, ExternalLink, Loader2 } from "lucide-react"
-import { businesses as mockBusinesses, type Business } from "@/lib/data"
+import { businesses as mockBusinesses } from "@/lib/data"
+import type { Business } from "@/lib/types/business"
+import {
+  getHeroImage,
+  getHeadlineRating,
+  getHeadlineReviewCount,
+  getLocationLabel,
+} from "@/lib/business/normalise-business"
+import { formatPriceLevel } from "@/lib/business/category-mapping"
 import { PhotoGallery } from "@/components/photo-gallery"
 import { cn } from "@/lib/utils"
 import { notFound } from "next/navigation"
 
+import type { BusinessReview } from "@/lib/types/business"
+
 const fetcher = (url: string) => fetch(url).then((res) => res.json())
 
-interface Review {
-  id: string
-  author: string
-  avatar: string
-  rating: number
-  date: string
-  content: string
-}
-
-const mockReviews: Review[] = [
+// Generic fallback reviews, only shown when a business has no reviews of its own.
+const fallbackReviews: BusinessReview[] = [
   {
-    id: "1",
+    id: "fallback-1",
     author: "Sarah Mitchell",
-    avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop",
     rating: 5,
     date: "2 weeks ago",
-    content: "Absolutely loved this place! The atmosphere was perfect and the service was exceptional. Will definitely be coming back.",
+    text: "Absolutely loved this place! The atmosphere was perfect and the service was exceptional. Will definitely be coming back.",
   },
   {
-    id: "2",
+    id: "fallback-2",
     author: "James Thompson",
-    avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop",
     rating: 4,
     date: "1 month ago",
-    content: "Great experience overall. The location is wonderful and staff were very friendly. Only minor issue was the wait time.",
+    text: "Great experience overall. The location is wonderful and staff were very friendly. Only minor issue was the wait time.",
   },
   {
-    id: "3",
+    id: "fallback-3",
     author: "Emily Roberts",
-    avatar: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&h=100&fit=crop",
     rating: 5,
     date: "2 months ago",
-    content: "One of the best places I have been to in London. Highly recommend for anyone looking for a premium experience.",
+    text: "One of the best places I have been to in London. Highly recommend for anyone looking for a premium experience.",
   },
 ]
+
+const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+
+// Produce a short human-readable summary of a business's opening hours.
+function describeHours(business: Business): string {
+  const today = business.openingHours?.find((h) => h.day === new Date().getDay())
+  if (today) {
+    if (today.closed) return `Closed today (${DAY_NAMES[today.day]})`
+    if (today.open && today.close) return `Open today - ${today.open} to ${today.close}`
+  }
+  if (business.openingHours && business.openingHours.length > 0) return "See opening hours"
+  return "Hours not available"
+}
 
 export default function BusinessDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
@@ -83,12 +95,14 @@ export default function BusinessDetailPage({ params }: { params: Promise<{ id: s
     return null
   }
 
+  const displayReviews = business.reviews && business.reviews.length > 0 ? business.reviews : fallbackReviews
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header Image */}
       <div className="relative h-72 sm:h-96 md:h-[28rem] overflow-hidden">
         <Image
-          src={business.image}
+          src={getHeroImage(business) || "/placeholder.svg"}
           alt={business.name}
           fill
           className="object-cover"
@@ -150,7 +164,7 @@ export default function BusinessDetailPage({ params }: { params: Promise<{ id: s
               className="inline-block px-4 py-1.5 rounded-full bg-foreground text-background text-sm font-semibold mb-5"
               style={{ animation: 'fadeInUp 0.4s ease-out 0.1s forwards', opacity: 0 }}
             >
-              {business.priceLevel}
+              {formatPriceLevel(business.priceLevel)}
             </span>
             
             <div className="mb-6">
@@ -164,14 +178,16 @@ export default function BusinessDetailPage({ params }: { params: Promise<{ id: s
                 className="flex flex-wrap items-center gap-4"
                 style={{ animation: 'fadeInUp 0.4s ease-out 0.2s forwards', opacity: 0 }}
               >
-                <div className="flex items-center gap-2 bg-secondary/80 px-3.5 py-2 rounded-full transition-all duration-300 hover:bg-amber-100">
-                  <Star className="h-4 w-4 fill-amber-500 text-amber-500" />
-                  <span className="font-semibold text-foreground">{business.rating}</span>
-                  <span className="text-muted-foreground text-sm">({(business.reviewCount || 0).toLocaleString()} reviews)</span>
-                </div>
+                {getHeadlineRating(business) !== undefined && (
+                  <div className="flex items-center gap-2 bg-secondary/80 px-3.5 py-2 rounded-full transition-all duration-300 hover:bg-amber-100">
+                    <Star className="h-4 w-4 fill-amber-500 text-amber-500" />
+                    <span className="font-semibold text-foreground">{getHeadlineRating(business)}</span>
+                    <span className="text-muted-foreground text-sm">({(getHeadlineReviewCount(business) || 0).toLocaleString()} reviews)</span>
+                  </div>
+                )}
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <MapPin className="h-4 w-4" />
-                  <span>{business.location}</span>
+                  <span>{getLocationLabel(business)}</span>
                 </div>
               </div>
             </div>
@@ -210,7 +226,7 @@ export default function BusinessDetailPage({ params }: { params: Promise<{ id: s
               <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4">Ratings Breakdown</h3>
               <div className="grid grid-cols-2 gap-3">
                 {/* Instagram */}
-                {business.ratings?.instagram && (
+                {business.providerRatings.instagram?.followers !== undefined && (
                   <div className={cn(
                     "flex flex-col gap-2 p-4 rounded-2xl bg-secondary/40 border border-border/30",
                     "transition-all duration-300 hover:bg-secondary/60 hover:border-border/50"
@@ -222,7 +238,7 @@ export default function BusinessDetailPage({ params }: { params: Promise<{ id: s
                         </div>
                         <span className="text-sm font-medium text-foreground">Instagram</span>
                       </div>
-                      {business.ratings.instagram.trending && (
+                      {business.providerRatings.instagram?.trending && (
                         <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-pink-100 text-pink-600">
                           <TrendingUp className="h-3 w-3" />
                           <span className="text-xs font-semibold">Trending</span>
@@ -231,7 +247,7 @@ export default function BusinessDetailPage({ params }: { params: Promise<{ id: s
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-lg font-semibold text-foreground">
-                        {(business.ratings.instagram.followers / 1000).toFixed(0)}K
+                        {((business.providerRatings.instagram?.followers ?? 0) / 1000).toFixed(0)}K
                         <span className="text-sm font-normal text-muted-foreground ml-1">followers</span>
                       </span>
                       <button className={cn(
@@ -264,21 +280,21 @@ export default function BusinessDetailPage({ params }: { params: Promise<{ id: s
                   <div className="flex items-center gap-2">
                     <div className="flex items-center gap-1">
                       <Star className="h-5 w-5 fill-amber-500 text-amber-500" />
-                      <span className="text-lg font-semibold text-foreground">{business.ratings?.google?.rating || business.rating || 0}</span>
+                      <span className="text-lg font-semibold text-foreground">{business.providerRatings.google?.rating ?? getHeadlineRating(business) ?? 0}</span>
                     </div>
                     <span className="text-sm text-muted-foreground">
-                      ({(business.ratings?.google?.reviews || 0).toLocaleString()} reviews)
+                      ({(business.providerRatings.google?.reviews ?? getHeadlineReviewCount(business) ?? 0).toLocaleString()} reviews)
                     </span>
                   </div>
                 </div>
 
                 {/* Food Hygiene Rating */}
-                {business.ratings?.foodHygiene !== undefined && (
+                {business.providerRatings.foodHygiene !== undefined && (
                   <div className={cn(
                     "flex flex-col gap-2 p-4 rounded-2xl border",
-                    business.ratings.foodHygiene >= 4 
+                    business.providerRatings.foodHygiene >= 4 
                       ? "bg-emerald-50/50 border-emerald-200/50" 
-                      : business.ratings.foodHygiene >= 3 
+                      : business.providerRatings.foodHygiene >= 3 
                         ? "bg-amber-50/50 border-amber-200/50"
                         : "bg-red-50/50 border-red-200/50",
                     "transition-all duration-300 hover:shadow-sm"
@@ -286,17 +302,17 @@ export default function BusinessDetailPage({ params }: { params: Promise<{ id: s
                     <div className="flex items-center gap-2">
                       <div className={cn(
                         "w-8 h-8 rounded-xl flex items-center justify-center",
-                        business.ratings.foodHygiene >= 4 
+                        business.providerRatings.foodHygiene >= 4 
                           ? "bg-emerald-100" 
-                          : business.ratings.foodHygiene >= 3 
+                          : business.providerRatings.foodHygiene >= 3 
                             ? "bg-amber-100"
                             : "bg-red-100"
                       )}>
                         <ShieldCheck className={cn(
                           "h-4 w-4",
-                          business.ratings.foodHygiene >= 4 
+                          business.providerRatings.foodHygiene >= 4 
                             ? "text-emerald-600" 
-                            : business.ratings.foodHygiene >= 3 
+                            : business.providerRatings.foodHygiene >= 3 
                               ? "text-amber-600"
                               : "text-red-600"
                         )} />
@@ -307,31 +323,27 @@ export default function BusinessDetailPage({ params }: { params: Promise<{ id: s
                       <div className="flex items-center gap-2">
                         <span className={cn(
                           "text-lg font-bold",
-                          business.ratings.foodHygiene >= 4 
+                          business.providerRatings.foodHygiene >= 4 
                             ? "text-emerald-700" 
-                            : business.ratings.foodHygiene >= 3 
+                            : business.providerRatings.foodHygiene >= 3 
                               ? "text-amber-700"
                               : "text-red-700"
                         )}>
-                          {business.ratings.foodHygiene}/5
+                          {business.providerRatings.foodHygiene}/5
                         </span>
                         <span className={cn(
                           "text-xs font-medium px-2 py-0.5 rounded-full",
-                          business.ratings.foodHygiene === 5 
+                          business.providerRatings.foodHygiene >= 4 
                             ? "bg-emerald-100 text-emerald-700" 
-                            : business.ratings.foodHygiene === 4
-                              ? "bg-emerald-100 text-emerald-700"
-                              : business.ratings.foodHygiene === 3
-                                ? "bg-amber-100 text-amber-700"
-                                : "bg-red-100 text-red-700"
+                            : business.providerRatings.foodHygiene === 3
+                              ? "bg-amber-100 text-amber-700"
+                              : "bg-red-100 text-red-700"
                         )}>
-                          {business.ratings.foodHygiene === 5 
+                          {business.providerRatings.foodHygiene >= 4 
                             ? "Very Good" 
-                            : business.ratings.foodHygiene === 4
-                              ? "Good"
-                              : business.ratings.foodHygiene === 3
-                                ? "Satisfactory"
-                                : "Needs Improvement"}
+                            : business.providerRatings.foodHygiene === 3
+                              ? "Satisfactory"
+                              : "Needs Improvement"}
                         </span>
                       </div>
                     </div>
@@ -339,7 +351,7 @@ export default function BusinessDetailPage({ params }: { params: Promise<{ id: s
                 )}
 
                 {/* Booking.com Rating - Only for hotels */}
-                {business.ratings?.bookingCom !== undefined && (
+                {business.providerRatings.bookingCom !== undefined && (
                   <div className={cn(
                     "flex flex-col gap-2 p-4 rounded-2xl bg-blue-50/50 border border-blue-200/50",
                     "transition-all duration-300 hover:shadow-sm"
@@ -352,13 +364,13 @@ export default function BusinessDetailPage({ params }: { params: Promise<{ id: s
                     </div>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <span className="text-lg font-bold text-blue-700">{business.ratings.bookingCom}</span>
+                        <span className="text-lg font-bold text-blue-700">{business.providerRatings.bookingCom}</span>
                         <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
-                          {business.ratings.bookingCom >= 9 
+                          {business.providerRatings.bookingCom >= 9 
                             ? "Excellent" 
-                            : business.ratings.bookingCom >= 8
+                            : business.providerRatings.bookingCom >= 8
                               ? "Very Good"
-                              : business.ratings.bookingCom >= 7
+                              : business.providerRatings.bookingCom >= 7
                                 ? "Good"
                                 : "Pleasant"}
                         </span>
@@ -406,9 +418,9 @@ export default function BusinessDetailPage({ params }: { params: Promise<{ id: s
           <div className="border-t border-border/60">
             <div className="divide-y divide-border/60">
               {[
-                { icon: Clock, label: "Opening Hours", value: "Open now - Closes 10:00 PM" },
-                { icon: Phone, label: "Contact", value: "+44 20 1234 5678" },
-                { icon: Globe, label: "Website", value: "www.example.com" },
+                { icon: Clock, label: "Opening Hours", value: describeHours(business) },
+                { icon: Phone, label: "Contact", value: business.contact?.phone || "Not available" },
+                { icon: Globe, label: "Website", value: business.contact?.website || "Not available" },
               ].map((item, index) => (
                 <div 
                   key={item.label}
@@ -436,8 +448,8 @@ export default function BusinessDetailPage({ params }: { params: Promise<{ id: s
         </div>
 
         {/* Photo Gallery Section */}
-        {business.gallery && business.gallery.length > 0 && (
-          <PhotoGallery images={business.gallery} businessName={business.name} />
+        {business.media.gallery && business.media.gallery.length > 0 && (
+          <PhotoGallery images={business.media.gallery} businessName={business.name} />
         )}
 
         {/* Reviews Section */}
@@ -457,24 +469,22 @@ export default function BusinessDetailPage({ params }: { params: Promise<{ id: s
             </div>
           </div>
           <div className="divide-y divide-border/60">
-            {mockReviews.map((review, index) => (
+            {displayReviews.map((review, index) => (
               <div 
                 key={review.id} 
                 className="p-6 sm:p-8 transition-colors duration-300 hover:bg-secondary/20"
                 style={{ animation: `fadeInUp 0.4s ease-out ${0.7 + index * 0.1}s forwards`, opacity: 0 }}
               >
                 <div className="flex items-start gap-4">
-                  <Image
-                    src={review.avatar}
-                    alt={review.author}
-                    width={52}
-                    height={52}
-                    className="rounded-2xl object-cover transition-transform duration-300 hover:scale-105"
-                  />
+                  <div className="w-13 h-13 shrink-0 rounded-2xl bg-secondary flex items-center justify-center">
+                    <span className="text-lg font-serif font-semibold text-foreground">
+                      {review.author.charAt(0).toUpperCase()}
+                    </span>
+                  </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2 mb-2">
                       <h3 className="font-semibold text-foreground">{review.author}</h3>
-                      <span className="text-sm text-muted-foreground shrink-0">{review.date}</span>
+                      {review.date && <span className="text-sm text-muted-foreground shrink-0">{review.date}</span>}
                     </div>
                     <div className="flex items-center gap-1 mb-3">
                       {Array.from({ length: 5 }).map((_, i) => (
@@ -490,7 +500,7 @@ export default function BusinessDetailPage({ params }: { params: Promise<{ id: s
                         />
                       ))}
                     </div>
-                    <p className="text-muted-foreground leading-relaxed">{review.content}</p>
+                    <p className="text-muted-foreground leading-relaxed">{review.text}</p>
                   </div>
                 </div>
               </div>

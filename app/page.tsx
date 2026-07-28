@@ -7,7 +7,9 @@ import { CategoryFilter } from "@/components/category-filter"
 import { BusinessCard } from "@/components/business-card"
 import { MapView } from "@/components/map-view"
 import { AuthModal } from "@/components/auth-modal"
-import { businesses as mockBusinesses, categories, type Business } from "@/lib/data"
+import { businesses as mockBusinesses, categories } from "@/lib/data"
+import type { Business } from "@/lib/types/business"
+import { getHeadlineRating, getLocationLabel } from "@/lib/business/normalise-business"
 import { FilterBar, type SortOption, type FilterOptions } from "@/components/filter-bar"
 import { AIPicks } from "@/components/ai-picks"
 import { AISearch } from "@/components/ai-search"
@@ -87,32 +89,11 @@ export default function HomePage() {
       })
       const data = await res.json()
 
-      const mappedBusinesses = (data.results || []).map((place: any) => ({
-        id: place.place_id,
-        name: place.name,
-        category: data.aiContext?.aiPowered ? "AI Recommended" : "Google Result",
-        rating: place.rating || 0,
-        reviewCount: place.user_ratings_total || 0,
-        location: place.formatted_address || place.vicinity || "London",
-        description: place.types?.join(", ") || "Recommended by AI",
-        image: "/placeholder.svg",
-        images: ["/placeholder.svg"],
-        gallery: [],
-        coordinates: {
-          lat: place.geometry?.location?.lat || 51.5074,
-          lng: place.geometry?.location?.lng || -0.1278,
-        },
-        priceLevel: place.price_level ? "£".repeat(place.price_level) : "££",
-        tags: place.types || [],
-        ratings: {
-          google: {
-            rating: place.rating || 0,
-            reviews: place.user_ratings_total || 0,
-          },
-        },
-      }))
+      // The API returns a normalised `businesses` array in the shared Business
+      // shape, so no client-side mapping is required.
+      const results: Business[] = data.businesses || []
 
-      setAISearchResults(mappedBusinesses as Business[])
+      setAISearchResults(results)
       setSearchQuery(data.aiContext?.optimizedQuery || query)
       setAISearchQuery(query)
     } catch (error) {
@@ -137,30 +118,32 @@ export default function HomePage() {
   }, [sortBy, filters])
 
   const filteredBusinesses = useMemo(() => {
+    const q = searchQuery.toLowerCase()
     let result = businesses.filter((business) => {
       // Skip text search filter when AI search results are active (Google already filtered them)
-      const matchesSearch = aiSearchResults !== null || 
-        business.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        business.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        business.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (business.tags || []).some((tag) =>
-          tag.toLowerCase().includes(searchQuery.toLowerCase())
-        )
+      const matchesSearch = aiSearchResults !== null ||
+        business.name.toLowerCase().includes(q) ||
+        (business.description ?? "").toLowerCase().includes(q) ||
+        getLocationLabel(business).toLowerCase().includes(q) ||
+        (business.tags || []).some((tag) => tag.toLowerCase().includes(q))
 
       const matchesCategory = activeCategory === "all" || business.category === activeCategory
 
-      const matchesTrending = !filters.trendingOnly || business.ratings.instagram?.trending === true
+      const matchesTrending = !filters.trendingOnly || business.providerRatings.instagram?.trending === true
       const matchesFoodHygiene = filters.minFoodHygiene === null ||
-        (business.ratings.foodHygiene !== undefined && business.ratings.foodHygiene >= filters.minFoodHygiene)
-      const matchesBooking = !filters.hasBookingRating || business.ratings?.bookingCom !== undefined
+        (business.providerRatings.foodHygiene !== undefined && business.providerRatings.foodHygiene >= filters.minFoodHygiene)
+      const matchesBooking = !filters.hasBookingRating || business.providerRatings.bookingCom !== undefined
 
       return matchesSearch && matchesCategory && matchesTrending && matchesFoodHygiene && matchesBooking
     })
 
     if (sortBy === "google_rating") {
-      result = [...result].sort((a, b) => b.ratings.google.rating - a.ratings.google.rating)
+      result = [...result].sort(
+        (a, b) => (getHeadlineRating(b) ?? 0) - (getHeadlineRating(a) ?? 0)
+      )
     } else if (sortBy === "instagram_followers") {
-      result = [...result].sort((a, b) => (b.ratings.instagram?.followers || 0) - (a.ratings.instagram?.followers || 0)
+      result = [...result].sort(
+        (a, b) => (b.providerRatings.instagram?.followers || 0) - (a.providerRatings.instagram?.followers || 0)
       )
     }
 
