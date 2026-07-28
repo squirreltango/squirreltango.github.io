@@ -1,5 +1,20 @@
 import { NextRequest, NextResponse } from "next/server"
 import { GoogleGenerativeAI } from "@google/generative-ai"
+import { mapGooglePlaceToBusiness, type GooglePlaceResult } from "@/lib/business/google-places"
+
+// Attach a normalised `businesses` array (shared Business model) alongside the
+// raw Google `results`, so the client never has to map raw place data.
+function withBusinesses(payload: {
+  results?: GooglePlaceResult[]
+  aiContext?: { aiPowered?: boolean }
+  [key: string]: unknown
+}) {
+  const aiPowered = payload.aiContext?.aiPowered === true
+  const businesses = (payload.results || []).map((place) =>
+    mapGooglePlaceToBusiness(place, aiPowered ? "ai" : "google"),
+  )
+  return { ...payload, businesses }
+}
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams
@@ -52,15 +67,15 @@ Optimized query:`
     const placesResponse = await fetchGooglePlaces(optimizedQuery, placesApiKey)
     const placesData = await placesResponse.json()
 
-    // Add the AI context to the response
-    return NextResponse.json({
+    // Add the AI context to the response and attach normalised businesses.
+    return NextResponse.json(withBusinesses({
       ...placesData,
       aiContext: {
         originalQuery: query,
         optimizedQuery: optimizedQuery,
         aiPowered: true
       }
-    }, {
+    }), {
       headers: { "Cache-Control": "no-store" }
     })
 
@@ -74,7 +89,7 @@ Optimized query:`
 async function fetchGooglePlaces(query: string, apiKey: string | undefined): Promise<NextResponse> {
   if (!apiKey) {
     console.log("[v0] No Google Places API key, returning mock data")
-    return NextResponse.json(getMockResults(query), {
+    return NextResponse.json(withBusinesses(getMockResults(query)), {
       headers: { "Cache-Control": "no-store" }
     })
   }
@@ -89,17 +104,17 @@ async function fetchGooglePlaces(query: string, apiKey: string | undefined): Pro
 
     if (data.status === "REQUEST_DENIED" || data.status === "INVALID_REQUEST" || !data.results?.length) {
       console.log("[v0] Google Places error, returning mock data. Status:", data.status)
-      return NextResponse.json(getMockResults(query), {
+      return NextResponse.json(withBusinesses(getMockResults(query)), {
         headers: { "Cache-Control": "no-store" }
       })
     }
 
-    return NextResponse.json(data, {
+    return NextResponse.json(withBusinesses(data), {
       headers: { "Cache-Control": "no-store" }
     })
   } catch (error) {
     console.error("[v0] Google Places fetch error:", error)
-    return NextResponse.json(getMockResults(query), {
+    return NextResponse.json(withBusinesses(getMockResults(query)), {
       headers: { "Cache-Control": "no-store" }
     })
   }

@@ -1,4 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
+import { mapGooglePlaceToBusiness, type GooglePlaceResult } from "@/lib/business/google-places"
+
+// Attach a normalised `businesses` array (shared Business model) to the raw
+// Google `results` payload.
+function withBusinesses(payload: { results?: GooglePlaceResult[]; [key: string]: unknown }) {
+  const businesses = (payload.results || []).map((place) =>
+    mapGooglePlaceToBusiness(place, "google"),
+  )
+  return { ...payload, businesses }
+}
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams
@@ -13,7 +23,7 @@ export async function GET(request: NextRequest) {
   if (!apiKey) {
     // Return mock data if no API key is configured
     console.log("[v0] No GOOGLE_PLACES_API_KEY found, returning mock data")
-    return NextResponse.json({
+    return NextResponse.json(withBusinesses({
       results: [
         {
           place_id: "mock-1",
@@ -56,7 +66,7 @@ export async function GET(request: NextRequest) {
         }
       ],
       status: "OK"
-    })
+    }))
   }
 
   try {
@@ -71,17 +81,17 @@ export async function GET(request: NextRequest) {
     if (data.status === "REQUEST_DENIED" || data.status === "INVALID_REQUEST" || !data.results?.length) {
       console.log("[v0] Falling back to mock data. Status:", data.status, "Error:", data.error_message)
       const mockData = getMockResults(query)
-      return NextResponse.json(mockData, {
+      return NextResponse.json(withBusinesses(mockData), {
         headers: { "Cache-Control": "no-store" }
       })
     }
 
-    return NextResponse.json(data, {
+    return NextResponse.json(withBusinesses(data), {
       headers: { "Cache-Control": "no-store" }
     })
   } catch (error) {
     console.error("[v0] Google Places API error:", error)
-    return NextResponse.json(getMockResults(query))
+    return NextResponse.json(withBusinesses(getMockResults(query)))
   }
 }
 
