@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react"
 import Image from "next/image"
 import { X, ChevronLeft, ChevronRight, Instagram, ImageIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
-import type { GalleryImage } from "@/lib/data"
+import type { GalleryImage } from "@/lib/types/business"
 
 interface PhotoGalleryProps {
   images: GalleryImage[]

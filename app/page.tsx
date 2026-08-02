@@ -7,7 +7,9 @@ import { CategoryFilter } from "@/components/category-filter"
 import { BusinessCard } from "@/components/business-card"
 import { MapView } from "@/components/map-view"
 import { AuthModal } from "@/components/auth-modal"
-import { businesses as mockBusinesses, categories, type Business } from "@/lib/data"
+import { businesses as mockBusinesses, categories } from "@/lib/data"
+import type { Business } from "@/lib/types/business"
+import { getHeadlineRating, getLocationLabel } from "@/lib/business/normalise-business"
 import { FilterBar, type SortOption, type FilterOptions } from "@/components/filter-bar"
 import { AIPicks } from "@/components/ai-picks"
 import { AISearch } from "@/components/ai-search"
@@ -28,6 +30,7 @@ export default function HomePage() {
   })
   const [isAISearching, setIsAISearching] = useState(false)
   const [aiSearchQuery, setAISearchQuery] = useState<string | null>(null)
+  const [aiSearchResults, setAISearchResults] = useState<Business[] | null>(null)
   const [isSettingUp, setIsSettingUp] = useState(false)
 
   // Fetch businesses from Supabase
@@ -41,7 +44,7 @@ export default function HomePage() {
   )
 
   // Use Supabase data if available, otherwise fallback to mock data
-  const businesses = useMemo(() => {
+  const baseBusinesses = useMemo(() => {
     if (supabaseBusinesses && supabaseBusinesses.length > 0) {
       return supabaseBusinesses
     }
@@ -51,6 +54,9 @@ export default function HomePage() {
     }
     return mockBusinesses
   }, [supabaseBusinesses, error])
+
+  // Use AI search results if available, otherwise use base businesses
+  const businesses = aiSearchResults || baseBusinesses
 
   const isUsingMockData = !supabaseBusinesses || supabaseBusinesses.length === 0 || error
 
@@ -73,18 +79,33 @@ export default function HomePage() {
     }
   }
 
-  const handleAISearch = (query: string) => {
+  const handleAISearch = async (query: string) => {
     setIsAISearching(true)
-    setTimeout(() => {
-      setSearchQuery(query)
-      setAISearchQuery(query)
-      setIsAISearching(false)
-    }, 1200)
-  }
 
+    try {
+      // Use the new AI-powered search endpoint
+      const res = await fetch(`/api/ai-search?query=${encodeURIComponent(query)}`, {
+        cache: "no-store"
+      })
+      const data = await res.json()
+
+      // The API returns a normalised `businesses` array in the shared Business
+      // shape, so no client-side mapping is required.
+      const results: Business[] = data.businesses || []
+
+      setAISearchResults(results)
+      setSearchQuery(data.aiContext?.optimizedQuery || query)
+      setAISearchQuery(query)
+    } catch (error) {
+      console.error("AI search failed:", error)
+    } finally {
+      setIsAISearching(false)
+    }
+  }
   const handleClearAISearch = () => {
     setSearchQuery("")
     setAISearchQuery(null)
+    setAISearchResults(null)
   }
 
   const activeFilterCount = useMemo(() => {
@@ -97,33 +118,37 @@ export default function HomePage() {
   }, [sortBy, filters])
 
   const filteredBusinesses = useMemo(() => {
+    const q = searchQuery.toLowerCase()
     let result = businesses.filter((business) => {
-      const matchesSearch =
-        business.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        business.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        business.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        business.tags.some((tag) => tag.toLowerCase().includes(searchQuery.toLowerCase()))
+      // Skip text search filter when AI search results are active (Google already filtered them)
+      const matchesSearch = aiSearchResults !== null ||
+        business.name.toLowerCase().includes(q) ||
+        (business.description ?? "").toLowerCase().includes(q) ||
+        getLocationLabel(business).toLowerCase().includes(q) ||
+        (business.tags || []).some((tag) => tag.toLowerCase().includes(q))
 
       const matchesCategory = activeCategory === "all" || business.category === activeCategory
 
-      const matchesTrending = !filters.trendingOnly || business.ratings.instagram?.trending === true
-      const matchesFoodHygiene = filters.minFoodHygiene === null || 
-        (business.ratings.foodHygiene !== undefined && business.ratings.foodHygiene >= filters.minFoodHygiene)
-      const matchesBooking = !filters.hasBookingRating || business.ratings.bookingCom !== undefined
+      const matchesTrending = !filters.trendingOnly || business.providerRatings.instagram?.trending === true
+      const matchesFoodHygiene = filters.minFoodHygiene === null ||
+        (business.providerRatings.foodHygiene !== undefined && business.providerRatings.foodHygiene >= filters.minFoodHygiene)
+      const matchesBooking = !filters.hasBookingRating || business.providerRatings.bookingCom !== undefined
 
       return matchesSearch && matchesCategory && matchesTrending && matchesFoodHygiene && matchesBooking
     })
 
     if (sortBy === "google_rating") {
-      result = [...result].sort((a, b) => b.ratings.google.rating - a.ratings.google.rating)
+      result = [...result].sort(
+        (a, b) => (getHeadlineRating(b) ?? 0) - (getHeadlineRating(a) ?? 0)
+      )
     } else if (sortBy === "instagram_followers") {
-      result = [...result].sort((a, b) => 
-        (b.ratings.instagram?.followers || 0) - (a.ratings.instagram?.followers || 0)
+      result = [...result].sort(
+        (a, b) => (b.providerRatings.instagram?.followers || 0) - (a.providerRatings.instagram?.followers || 0)
       )
     }
 
     return result
-  }, [businesses, searchQuery, activeCategory, sortBy, filters])
+  }, [businesses, searchQuery, activeCategory, sortBy, filters, aiSearchResults])
 
   return (
     <div className="min-h-screen bg-background">
@@ -165,7 +190,7 @@ export default function HomePage() {
 
         {/* AI Search */}
         <div className="mb-12">
-          <AISearch 
+          <AISearch
             onSearch={handleAISearch}
             isSearching={isAISearching}
             activeQuery={aiSearchQuery}
@@ -259,6 +284,7 @@ export default function HomePage() {
                   hasBookingRating: false,
                 })
                 setAISearchQuery(null)
+                setAISearchResults(null)
               }}
               className="px-6 py-3 rounded-full bg-foreground text-background text-sm font-medium hover:bg-foreground/90 transition-colors"
             >

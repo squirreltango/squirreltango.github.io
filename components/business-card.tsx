@@ -2,9 +2,15 @@
 
 import Image from "next/image"
 import Link from "next/link"
-import { Star, MapPin, Heart, Instagram, ShieldCheck, Building2, TrendingUp, ChevronLeft, ChevronRight, BadgeCheck, Zap, Sparkles, Search } from "lucide-react"
+import { Star, MapPin, Heart, Instagram, ShieldCheck, Building2, TrendingUp, ChevronLeft, ChevronRight, BadgeCheck, Zap, Search } from "lucide-react"
 import { useState, useCallback, useMemo } from "react"
-import type { Business } from "@/lib/data"
+import type { Business } from "@/lib/types/business"
+import {
+  getBusinessImages,
+  getHeadlineRating,
+  getLocationLabel,
+} from "@/lib/business/normalise-business"
+import { formatPriceLevel } from "@/lib/business/category-mapping"
 import { cn } from "@/lib/utils"
 
 interface BusinessCardProps {
@@ -15,7 +21,7 @@ interface BusinessCardProps {
 
 // Helper function to highlight keywords in text
 function HighlightedText({ text, keywords }: { text: string; keywords: string[] }) {
-  if (!keywords.length) return <>{text}</>
+  if (!keywords.length || !text) return <>{text}</>
   
   const escapedKeywords = keywords.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
   const regex = new RegExp(`(${escapedKeywords.join('|')})`, 'gi')
@@ -50,10 +56,17 @@ function extractKeywords(query: string | null | undefined): string[] {
 function getSmartTags(business: Business, searchQuery: string | null | undefined): { label: string; variant: 'match' | 'popular' | 'rated' }[] {
   const tags: { label: string; variant: 'match' | 'popular' | 'rated' }[] = []
   const keywords = extractKeywords(searchQuery)
-  
+  const description = business.description ?? ""
+  const location = getLocationLabel(business)
+
+  // Prefer AI-generated match reasons when present
+  const hasMatchReasons = (business.ai?.matchReasons?.length ?? 0) > 0
+
   // Check if matches search
-  if (keywords.length > 0) {
-    const businessText = `${business.name} ${business.description} ${business.tags.join(' ')} ${business.location}`.toLowerCase()
+  if (hasMatchReasons) {
+    tags.push({ label: 'Matches your search', variant: 'match' })
+  } else if (keywords.length > 0) {
+    const businessText = `${business.name} ${description} ${business.tags.join(' ')} ${location}`.toLowerCase()
     const matchCount = keywords.filter(k => businessText.includes(k)).length
     if (matchCount > 0) {
       tags.push({ label: 'Matches your search', variant: 'match' })
@@ -64,7 +77,7 @@ function getSmartTags(business: Business, searchQuery: string | null | undefined
   if (searchQuery?.toLowerCase().includes('wedding')) {
     const weddingKeywords = ['bridal', 'wedding', 'luxury', 'elegant', 'styling', 'makeup', 'hair']
     const hasWeddingService = weddingKeywords.some(k => 
-      business.description.toLowerCase().includes(k) || 
+      description.toLowerCase().includes(k) || 
       business.tags.some(t => t.toLowerCase().includes(k))
     )
     if (hasWeddingService) {
@@ -72,10 +85,11 @@ function getSmartTags(business: Business, searchQuery: string | null | undefined
     }
   }
   
-  // Check if highly rated
-  if (business.ratings.google.rating >= 4.7 && business.ratings.google.reviews > 1000) {
+  // Check if highly rated (only when the data supports it)
+  const google = business.providerRatings.google
+  if (google?.rating !== undefined && google.rating >= 4.7 && (google.reviews ?? 0) > 1000) {
     tags.push({ label: 'Highly rated', variant: 'rated' })
-  } else if (business.ratings.instagram?.trending) {
+  } else if (business.providerRatings.instagram?.trending) {
     tags.push({ label: 'Trending now', variant: 'popular' })
   }
   
@@ -87,9 +101,17 @@ export function BusinessCard({ business, index = 0, searchQuery }: BusinessCardP
   const [isHovered, setIsHovered] = useState(false)
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
   
-  const images = business.images?.length > 0 ? business.images : [business.image]
+  const images = getBusinessImages(business)
   const keywords = useMemo(() => extractKeywords(searchQuery), [searchQuery])
   const smartTags = useMemo(() => getSmartTags(business, searchQuery), [business, searchQuery])
+
+  const headlineRating = getHeadlineRating(business)
+  const priceLabel = formatPriceLevel(business.priceLevel)
+  const locationLabel = getLocationLabel(business)
+  const google = business.providerRatings.google
+  const instagram = business.providerRatings.instagram
+  const foodHygiene = business.providerRatings.foodHygiene
+  const bookingCom = business.providerRatings.bookingCom
   
   const nextImage = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
@@ -119,7 +141,7 @@ export function BusinessCard({ business, index = 0, searchQuery }: BusinessCardP
         <div className="aspect-[4/3] overflow-hidden" style={{ position: 'relative' }}>
           {/* Main Image */}
           <Image
-            src={images[currentImageIndex]}
+            src={images[currentImageIndex] || "/placeholder.svg"}
             alt={business.name}
             fill
             className={cn(
@@ -157,8 +179,8 @@ export function BusinessCard({ business, index = 0, searchQuery }: BusinessCardP
             </div>
           )}
           
-          {/* Instagram Source Label - Show when no smart tags */}
-          {smartTags.length === 0 && (
+          {/* Instagram Source Label - Show when no smart tags and Instagram data exists */}
+          {smartTags.length === 0 && instagram && (
             <div className="absolute top-4 left-4 flex items-center gap-2">
               <div className={cn(
                 "flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-card/90 backdrop-blur-md shadow-lg",
@@ -238,14 +260,16 @@ export function BusinessCard({ business, index = 0, searchQuery }: BusinessCardP
           )}
           
           {/* Price Level Badge */}
-          <div className={cn(
-            "absolute bottom-4 left-4 transition-all duration-500",
-            isHovered ? "translate-y-0 opacity-100" : "translate-y-1 opacity-90"
-          )}>
-            <span className="px-3 py-1.5 rounded-full bg-card/90 backdrop-blur-md text-xs font-semibold text-foreground shadow-lg">
-              {business.priceLevel}
-            </span>
-          </div>
+          {priceLabel && (
+            <div className={cn(
+              "absolute bottom-4 left-4 transition-all duration-500",
+              isHovered ? "translate-y-0 opacity-100" : "translate-y-1 opacity-90"
+            )}>
+              <span className="px-3 py-1.5 rounded-full bg-card/90 backdrop-blur-md text-xs font-semibold text-foreground shadow-lg">
+                {priceLabel}
+              </span>
+            </div>
+          )}
         </div>
         
         {/* Content Section */}
@@ -259,26 +283,30 @@ export function BusinessCard({ business, index = 0, searchQuery }: BusinessCardP
             )}>
               <HighlightedText text={business.name} keywords={keywords} />
             </h3>
-            <div className={cn(
-              "flex items-center gap-1.5 shrink-0 px-2.5 py-1 rounded-full",
-              "bg-secondary/80 transition-all duration-300",
-              isHovered && "bg-amber-100 scale-105"
-            )}>
-              <Star className="h-3.5 w-3.5 fill-amber-500 text-amber-500" />
-              <span className="text-sm font-semibold text-foreground">{business.rating}</span>
-            </div>
+            {headlineRating !== undefined && (
+              <div className={cn(
+                "flex items-center gap-1.5 shrink-0 px-2.5 py-1 rounded-full",
+                "bg-secondary/80 transition-all duration-300",
+                isHovered && "bg-amber-100 scale-105"
+              )}>
+                <Star className="h-3.5 w-3.5 fill-amber-500 text-amber-500" />
+                <span className="text-sm font-semibold text-foreground">{headlineRating}</span>
+              </div>
+            )}
           </div>
           
           {/* Location */}
-          <div className="flex items-center gap-1.5 text-muted-foreground mb-4">
-            <MapPin className={cn(
-              "h-3.5 w-3.5 transition-all duration-300",
-              isHovered && "text-accent"
-            )} />
-            <span className="text-sm">
-              <HighlightedText text={business.location} keywords={keywords} />
-            </span>
-          </div>
+          {locationLabel && (
+            <div className="flex items-center gap-1.5 text-muted-foreground mb-4">
+              <MapPin className={cn(
+                "h-3.5 w-3.5 transition-all duration-300",
+                isHovered && "text-accent"
+              )} />
+              <span className="text-sm">
+                <HighlightedText text={locationLabel} keywords={keywords} />
+              </span>
+            </div>
+          )}
           
           {/* Ratings Data Section */}
           <div className={cn(
@@ -287,42 +315,48 @@ export function BusinessCard({ business, index = 0, searchQuery }: BusinessCardP
             isHovered && "bg-secondary/50 border-border/50"
           )}>
             {/* Google Rating */}
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-card flex items-center justify-center shadow-sm">
-                <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
-                  <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-                  <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                  <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-                  <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-                </svg>
+            {google?.rating !== undefined && (
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-card flex items-center justify-center shadow-sm">
+                  <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
+                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                  </svg>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-sm font-semibold text-foreground">{google.rating}</span>
+                  {google.reviews !== undefined && (
+                    <span className="text-xs text-muted-foreground">{google.reviews.toLocaleString()} reviews</span>
+                  )}
+                </div>
               </div>
-              <div className="flex flex-col">
-                <span className="text-sm font-semibold text-foreground">{business.ratings.google.rating}</span>
-                <span className="text-xs text-muted-foreground">{business.ratings.google.reviews.toLocaleString()} reviews</span>
-              </div>
-            </div>
+            )}
             
             {/* Instagram */}
-            {business.ratings.instagram && (
+            {instagram && (instagram.followers !== undefined || instagram.trending) && (
               <div className="flex items-center gap-2">
                 <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-pink-500 via-red-500 to-yellow-500 flex items-center justify-center shadow-sm">
                   <Instagram className="h-3.5 w-3.5 text-white" />
                 </div>
                 <div className="flex flex-col">
-                  {business.ratings.instagram.trending ? (
+                  {instagram.trending ? (
                     <>
                       <span className="flex items-center gap-1 text-sm font-semibold text-pink-600">
                         <TrendingUp className="h-3 w-3" />
                         Trending
                       </span>
-                      <span className="text-xs text-muted-foreground">
-                        {(business.ratings.instagram.followers / 1000).toFixed(0)}k followers
-                      </span>
+                      {instagram.followers !== undefined && (
+                        <span className="text-xs text-muted-foreground">
+                          {(instagram.followers / 1000).toFixed(0)}k followers
+                        </span>
+                      )}
                     </>
                   ) : (
                     <>
                       <span className="text-sm font-semibold text-foreground">
-                        {(business.ratings.instagram.followers / 1000).toFixed(0)}k
+                        {((instagram.followers ?? 0) / 1000).toFixed(0)}k
                       </span>
                       <span className="text-xs text-muted-foreground">followers</span>
                     </>
@@ -332,23 +366,23 @@ export function BusinessCard({ business, index = 0, searchQuery }: BusinessCardP
             )}
             
             {/* Food Hygiene Rating */}
-            {business.ratings.foodHygiene !== undefined && (
+            {foodHygiene !== undefined && (
               <div className="flex items-center gap-2">
                 <div className={cn(
                   "w-7 h-7 rounded-lg flex items-center justify-center shadow-sm",
-                  business.ratings.foodHygiene >= 4 ? "bg-emerald-100" : "bg-amber-100"
+                  foodHygiene >= 4 ? "bg-emerald-100" : "bg-amber-100"
                 )}>
                   <ShieldCheck className={cn(
                     "h-3.5 w-3.5",
-                    business.ratings.foodHygiene >= 4 ? "text-emerald-600" : "text-amber-600"
+                    foodHygiene >= 4 ? "text-emerald-600" : "text-amber-600"
                   )} />
                 </div>
                 <div className="flex flex-col">
                   <span className={cn(
                     "text-sm font-semibold",
-                    business.ratings.foodHygiene >= 4 ? "text-emerald-700" : "text-amber-700"
+                    foodHygiene >= 4 ? "text-emerald-700" : "text-amber-700"
                   )}>
-                    {business.ratings.foodHygiene}/5
+                    {foodHygiene}/5
                   </span>
                   <span className="text-xs text-muted-foreground">Hygiene</span>
                 </div>
@@ -356,15 +390,15 @@ export function BusinessCard({ business, index = 0, searchQuery }: BusinessCardP
             )}
             
             {/* Booking.com Rating */}
-            {business.ratings.bookingCom !== undefined && (
+            {bookingCom !== undefined && (
               <div className="flex items-center gap-2">
                 <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center shadow-sm">
                   <Building2 className="h-3.5 w-3.5 text-white" />
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-sm font-semibold text-blue-700">{business.ratings.bookingCom}</span>
+                  <span className="text-sm font-semibold text-blue-700">{bookingCom}</span>
                   <span className="text-xs text-muted-foreground">
-                    {business.ratings.bookingCom >= 9 ? "Excellent" : business.ratings.bookingCom >= 8 ? "Very Good" : "Good"}
+                    {bookingCom >= 9 ? "Excellent" : bookingCom >= 8 ? "Very Good" : "Good"}
                   </span>
                 </div>
               </div>
@@ -372,32 +406,36 @@ export function BusinessCard({ business, index = 0, searchQuery }: BusinessCardP
           </div>
           
           {/* Description with highlighting */}
-          <p className="text-sm text-muted-foreground leading-relaxed line-clamp-2 mb-4">
-            <HighlightedText text={business.description} keywords={keywords} />
-          </p>
+          {business.description && (
+            <p className="text-sm text-muted-foreground leading-relaxed line-clamp-2 mb-4">
+              <HighlightedText text={business.description} keywords={keywords} />
+            </p>
+          )}
           
           {/* Tags with highlighting */}
-          <div className="flex items-center gap-2 flex-wrap mb-4">
-            {business.tags.slice(0, 3).map((tag, i) => {
-              const isHighlighted = keywords.some(k => tag.toLowerCase().includes(k))
-              return (
-                <span
-                  key={tag}
-                  className={cn(
-                    "px-2.5 py-1 rounded-lg text-xs font-medium",
-                    "transition-all duration-300",
-                    isHighlighted 
-                      ? "bg-amber-100 text-amber-800 border border-amber-200" 
-                      : "bg-secondary/60 text-secondary-foreground",
-                    isHovered && !isHighlighted && "bg-secondary"
-                  )}
-                  style={{ transitionDelay: `${i * 50}ms` }}
-                >
-                  {tag}
-                </span>
-              )
-            })}
-          </div>
+          {business.tags.length > 0 && (
+            <div className="flex items-center gap-2 flex-wrap mb-4">
+              {business.tags.slice(0, 3).map((tag, i) => {
+                const isHighlighted = keywords.some(k => tag.toLowerCase().includes(k))
+                return (
+                  <span
+                    key={tag}
+                    className={cn(
+                      "px-2.5 py-1 rounded-lg text-xs font-medium",
+                      "transition-all duration-300",
+                      isHighlighted 
+                        ? "bg-amber-100 text-amber-800 border border-amber-200" 
+                        : "bg-secondary/60 text-secondary-foreground",
+                      isHovered && !isHighlighted && "bg-secondary"
+                    )}
+                    style={{ transitionDelay: `${i * 50}ms` }}
+                  >
+                    {tag}
+                  </span>
+                )
+              })}
+            </div>
+          )}
           
           {/* Trust Indicators */}
           <div className={cn(
