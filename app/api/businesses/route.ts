@@ -1,16 +1,24 @@
 import { createClient } from "@/lib/supabase/server"
 import { mapSupabaseRowToBusiness, type BusinessRow } from "@/lib/supabase/businesses"
-import { fetchLiveBusinesses } from "@/lib/business/places-search"
+import { businesses as mockBusinesses } from "@/lib/data/businesses"
 import type { Business } from "@/lib/types/business"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
 
+interface SupabaseOutcome {
+  businesses: Business[]
+  available: boolean
+}
+
 /**
- * Fetch the curated rows stored in Supabase. Returns an empty list (rather than
- * throwing) so a database problem can't stop live results being served.
+ * Read every business stored in Supabase.
+ *
+ * `available` distinguishes "the database answered but is empty" from "the
+ * database could not be reached", which decides whether we fall back to the
+ * bundled sample data.
  */
-async function fetchSupabaseBusinesses(): Promise<Business[]> {
+async function fetchSupabaseBusinesses(): Promise<SupabaseOutcome> {
   try {
     const supabase = await createClient()
 
@@ -21,38 +29,35 @@ async function fetchSupabaseBusinesses(): Promise<Business[]> {
 
     if (error) {
       console.error("[v0] Error fetching businesses from Supabase:", error.message)
-      return []
+      return { businesses: [], available: false }
     }
 
-    return (data as BusinessRow[] | null)?.map(mapSupabaseRowToBusiness) ?? []
+    const rows = (data as BusinessRow[] | null) ?? []
+    return { businesses: rows.map(mapSupabaseRowToBusiness), available: true }
   } catch (err) {
     console.error("[v0] Unexpected error reading Supabase businesses:", err)
-    return []
+    return { businesses: [], available: false }
   }
 }
 
 export async function GET() {
-  // Curated Supabase rows and live Google venues are fetched together; neither
-  // is allowed to fail the request.
-  const [curated, live] = await Promise.all([fetchSupabaseBusinesses(), fetchLiveBusinesses()])
+  const { businesses, available } = await fetchSupabaseBusinesses()
 
-  // Curated rows win over live ones for the same venue, matched on Google place
-  // id where available and otherwise on a normalised name.
-  const identityKey = (business: Business) =>
-    business.externalIds?.googlePlaceId ?? business.name.trim().toLowerCase()
-
-  const merged = new Map<string, Business>()
-  for (const business of curated) merged.set(identityKey(business), business)
-  for (const business of live) {
-    const key = identityKey(business)
-    if (!merged.has(key)) merged.set(key, business)
+  // Supabase is the source of truth. The bundled sample data is only used when
+  // the database is unreachable or has no rows yet, so the UI is never empty.
+  if (businesses.length > 0) {
+    return Response.json(businesses, {
+      headers: { "x-data-source": "supabase" },
+    })
   }
 
-  const businesses = [...merged.values()]
+  console.warn(
+    available
+      ? "[v0] Supabase returned no businesses; serving bundled sample data. Run the ingestion route to populate it."
+      : "[v0] Supabase unavailable; serving bundled sample data.",
+  )
 
-  if (businesses.length === 0) {
-    console.error("[v0] No businesses available from Supabase or Google Places")
-  }
-
-  return Response.json(businesses)
+  return Response.json(mockBusinesses, {
+    headers: { "x-data-source": available ? "mock-empty" : "mock-unavailable" },
+  })
 }

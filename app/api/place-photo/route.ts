@@ -8,10 +8,16 @@ import { type NextRequest, NextResponse } from "next/server"
  */
 export async function GET(request: NextRequest) {
   const ref = request.nextUrl.searchParams.get("ref")
+  // Places API (New) identifies photos by resource name:
+  // `places/{place_id}/photos/{photo_id}`.
+  const name = request.nextUrl.searchParams.get("name")
   const maxWidth = request.nextUrl.searchParams.get("w") || "800"
 
-  if (!ref) {
-    return NextResponse.json({ error: "ref parameter is required" }, { status: 400 })
+  if (!ref && !name) {
+    return NextResponse.json(
+      { error: "either the ref or name parameter is required" },
+      { status: 400 },
+    )
   }
 
   const apiKey = process.env.GOOGLE_PLACES_API_KEY
@@ -22,9 +28,21 @@ export async function GET(request: NextRequest) {
   // Only allow a sane width to avoid being used as an arbitrary image resizer.
   const width = Math.min(Math.max(Number(maxWidth) || 800, 100), 1600)
 
-  const url =
-    `https://maps.googleapis.com/maps/api/place/photo` +
-    `?maxwidth=${width}&photo_reference=${encodeURIComponent(ref)}&key=${apiKey}`
+  let url: string
+  if (name) {
+    // Reject anything that isn't a Places photo resource name so this cannot
+    // be pointed at other Google endpoints.
+    if (!/^places\/[A-Za-z0-9_-]+\/photos\/[A-Za-z0-9_-]+$/.test(name)) {
+      return NextResponse.json({ error: "invalid photo resource name" }, { status: 400 })
+    }
+    url =
+      `https://places.googleapis.com/v1/${name}/media` +
+      `?maxWidthPx=${width}&key=${apiKey}`
+  } else {
+    url =
+      `https://maps.googleapis.com/maps/api/place/photo` +
+      `?maxwidth=${width}&photo_reference=${encodeURIComponent(ref as string)}&key=${apiKey}`
+  }
 
   try {
     const upstream = await fetch(url, { redirect: "follow" })

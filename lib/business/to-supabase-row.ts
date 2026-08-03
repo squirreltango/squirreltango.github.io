@@ -11,7 +11,7 @@ export interface BusinessInsertRow {
   name: string
   category: string
   location: string | null
-  description: string | null
+  description?: string | null
   rating: number | null
   review_count: number | null
   image: string | null
@@ -22,6 +22,45 @@ export interface BusinessInsertRow {
   tags: string[] | null
   google_rating: number | null
   google_reviews: number | null
+
+  // Google sync columns (added by scripts/003_add_google_places_sync_columns.sql)
+  google_place_id?: string | null
+  source?: string
+  place_types?: string[] | null
+  address?: string | null
+  area?: string | null
+  open_now?: boolean | null
+  last_synced_at?: string
+}
+
+/**
+ * Build the row written by Google Places ingestion.
+ *
+ * Only Google-owned fields are included. Curated columns (`description`,
+ * `featured`, `verified`, `ai_match_reasons`, `instagram_handle`, `fsa_match`,
+ * and the Instagram / food-hygiene / Booking.com ratings) are deliberately
+ * omitted so a re-sync refreshes stale Google data without clobbering
+ * anything entered by hand.
+ */
+export function businessToGoogleSyncRow(
+  business: Business,
+  options: { area?: string; placeTypes?: string[]; openNow?: boolean } = {},
+): BusinessInsertRow {
+  const base = businessToInsertRow(business, options.area)
+
+  // `description` is curated; never let ingestion overwrite it.
+  delete base.description
+
+  return {
+    ...base,
+    google_place_id: business.externalIds?.googlePlaceId ?? business.id,
+    source: "google",
+    place_types: options.placeTypes?.length ? options.placeTypes : null,
+    address: business.location.address ?? null,
+    area: options.area ?? null,
+    open_now: options.openNow ?? null,
+    last_synced_at: new Date().toISOString(),
+  }
 }
 
 /**

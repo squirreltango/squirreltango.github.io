@@ -12,7 +12,10 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js"
  */
 export function createAdminClient(): SupabaseClient | null {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  // This project stores the key as `service_role_secret`; accept the canonical
+  // name too so either configuration works.
+  const serviceRoleKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.service_role_secret
 
   if (!url || !serviceRoleKey) return null
 

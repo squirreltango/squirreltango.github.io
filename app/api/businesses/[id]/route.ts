@@ -9,9 +9,28 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   try {
     const { id } = await params
 
-    // Live venues are keyed by Google place id, which isn't a Supabase uuid, so
-    // querying the table with it would error. Resolve those against Google.
+    const supabase = await createClient()
+
+    // Google place ids are not Supabase uuids, so they need their own lookup.
+    // Prefer the ingested row (it carries curated edits); fall back to a live
+    // Google fetch for venues that have not been ingested yet.
     if (isGooglePlaceId(id)) {
+      const { data: stored, error: storedError } = await supabase
+        .from("businesses")
+        .select("*")
+        .eq("google_place_id", id)
+        .maybeSingle()
+
+      // A missing google_place_id column simply means ingestion hasn't been set
+      // up yet; fall through to the live lookup instead of failing.
+      if (storedError && !/google_place_id/.test(storedError.message)) {
+        console.error("[v0] Error looking up business by place id:", storedError.message)
+      }
+
+      if (stored) {
+        return Response.json(mapSupabaseRowToBusiness(stored as BusinessRow))
+      }
+
       const live = await fetchLiveBusinessById(id)
 
       if (!live) {
@@ -20,8 +39,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
       return Response.json(live)
     }
-
-    const supabase = await createClient()
 
     const { data, error } = await supabase.from("businesses").select("*").eq("id", id).maybeSingle()
 

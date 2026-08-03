@@ -45,6 +45,18 @@ export interface BusinessRow {
   food_hygiene?: number | null
   booking_com_rating?: number | null
 
+  // Google sync columns (scripts/003_add_google_places_sync_columns.sql)
+  google_place_id?: string | null
+  place_types?: string[] | null
+  address?: string | null
+  area?: string | null
+  last_synced_at?: string | null
+
+  // Curated columns preserved across syncs
+  featured?: boolean | null
+  verified?: boolean | null
+  instagram_handle?: string | null
+
   created_at?: string
   updated_at?: string
 }
@@ -96,7 +108,14 @@ export function mapSupabaseRowToBusiness(row: BusinessRow): Business {
   return normaliseBusiness(
     {
       id: row.id,
-      externalIds: (row.external_ids as Business["externalIds"]) ?? undefined,
+      externalIds:
+        (row.external_ids as Business["externalIds"]) ??
+        (row.google_place_id || row.instagram_handle
+          ? {
+              googlePlaceId: row.google_place_id ?? undefined,
+              instagramHandle: row.instagram_handle ?? undefined,
+            }
+          : undefined),
       name: row.name,
       category: row.category,
       subcategory: row.subcategory ?? undefined,
@@ -108,6 +127,8 @@ export function mapSupabaseRowToBusiness(row: BusinessRow): Business {
           : typeof row.location === "string"
             ? row.location
             : undefined,
+      // `address` is a separate column from the short `location` label.
+      address: row.address ?? undefined,
       coordinates,
 
       media:
@@ -129,7 +150,15 @@ export function mapSupabaseRowToBusiness(row: BusinessRow): Business {
       openingHours: (row.opening_hours as Business["openingHours"]) ?? undefined,
       contact: (row.contact as Business["contact"]) ?? undefined,
       reviews: (row.reviews as Business["reviews"]) ?? undefined,
-      flags: (row.flags as Business["flags"]) ?? undefined,
+      flags:
+        (row.flags as Business["flags"]) ??
+        (row.featured || row.verified || row.instagram_trending
+          ? {
+              featured: row.featured ?? undefined,
+              verified: row.verified ?? undefined,
+              trending: row.instagram_trending ?? undefined,
+            }
+          : undefined),
 
       createdAt: row.created_at,
       updatedAt: row.updated_at,
