@@ -67,12 +67,35 @@ export interface GoogleAmenities {
   paidParking?: boolean
 }
 
+// Structured location derived from Google's `addressComponents`. Every field is
+// optional - we only ever populate what Google actually returns, and never
+// guess or infer an area from a business name. `displayLocation` is the
+// short, deduplicated human label used on cards (e.g. "Covent Garden, London").
+export interface GoogleLocation {
+  displayLocation?: string
+  neighbourhood?: string
+  sublocality?: string
+  locality?: string
+  postalTown?: string
+  adminArea?: string
+  postcode?: string
+  formattedAddress?: string
+  shortFormattedAddress?: string
+  coordinates?: {
+    lat: number
+    lng: number
+  }
+}
+
 // Enrichment sourced from Google Place Details (New). Kept clearly namespaced
 // so this data is always identifiable as Google-derived and never conflated
 // with curated LookMeUp content or other providers.
 export interface GoogleDetails {
   amenities?: GoogleAmenities
   editorialSummary?: string
+  // Structured, Google-sourced location. Populated by enrichment (Place Details
+  // New `addressComponents`) or the live detail fetch (legacy address_components).
+  location?: GoogleLocation
   // ISO timestamp of the last successful Place Details sync. Drives the 7-day
   // freshness window that keeps us from re-billing Google on every load.
   detailsLastSyncedAt?: string

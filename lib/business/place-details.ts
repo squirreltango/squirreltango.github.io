@@ -1,4 +1,5 @@
 import type { GoogleAmenities, GoogleDetails } from "@/lib/types/business"
+import { parseNewAddressComponents, type NewAddressComponent } from "@/lib/business/location"
 
 /**
  * Google Place Details (New) enrichment client.
@@ -17,7 +18,19 @@ import type { GoogleAmenities, GoogleDetails } from "@/lib/types/business"
 
 // The exact FieldMask sent to Google. Order/duplication is irrelevant to
 // billing; only the set of fields matters. Keep this list minimal.
+//
+// The location fields (addressComponents/formattedAddress/shortFormattedAddress/
+// location) belong to the cheapest "Place Details Essentials" tier. Billing for
+// a single request is the highest tier among ALL requested fields, and this
+// request already includes Atmosphere fields (the top tier), so adding these
+// structured-location fields costs NOTHING extra.
 const FIELD_MASK = [
+  // Location (Essentials tier - no incremental cost given Atmosphere below).
+  "addressComponents",
+  "formattedAddress",
+  "shortFormattedAddress",
+  "location",
+  // Editorial + Atmosphere (Enterprise + Atmosphere tier).
   "editorialSummary",
   "outdoorSeating",
   "reservable",
@@ -38,6 +51,10 @@ const PLACES_ENDPOINT = "https://places.googleapis.com/v1/places/"
 // Shape of the (partial) Place Details (New) response we care about. Every
 // field is optional - Google omits anything it has no data for.
 interface PlaceDetailsResponse {
+  addressComponents?: NewAddressComponent[]
+  formattedAddress?: string
+  shortFormattedAddress?: string
+  location?: { latitude?: number; longitude?: number }
   editorialSummary?: { text?: string; languageCode?: string }
   outdoorSeating?: boolean
   reservable?: boolean
@@ -66,6 +83,10 @@ export interface PlaceDetailsResult {
   googleDetails?: GoogleDetails
   hasAmenities: boolean
   hasEditorialSummary: boolean
+  // True when Google returned structured components that produced a display
+  // location more specific than a bare city fallback.
+  hasStructuredLocation: boolean
+  displayLocation?: string
   error?: string
 }
 
@@ -139,7 +160,14 @@ export async function fetchPlaceDetails(placeId: string, apiKey: string): Promis
       } catch {
         // ignore body parse failure; keep the HTTP status message
       }
-      return { ok: false, status: response.status, hasAmenities: false, hasEditorialSummary: false, error: message }
+      return {
+        ok: false,
+        status: response.status,
+        hasAmenities: false,
+        hasEditorialSummary: false,
+        hasStructuredLocation: false,
+        error: message,
+      }
     }
 
     const data = (await response.json()) as PlaceDetailsResponse
@@ -149,11 +177,30 @@ export async function fetchPlaceDetails(placeId: string, apiKey: string): Promis
     const editorialSummary = data.editorialSummary?.text?.trim() || undefined
     const hasEditorialSummary = Boolean(editorialSummary)
 
+    // Structured location from Google's addressComponents. Coordinates come from
+    // the `location` field (New API uses latitude/longitude).
+    const coordinates =
+      typeof data.location?.latitude === "number" && typeof data.location?.longitude === "number"
+        ? { lat: data.location.latitude, lng: data.location.longitude }
+        : undefined
+    const location = parseNewAddressComponents(data.addressComponents, {
+      formattedAddress: data.formattedAddress,
+      shortFormattedAddress: data.shortFormattedAddress,
+      coordinates,
+    })
+    // "Structured" means we resolved something more specific than just a city -
+    // i.e. an actual neighbourhood/sublocality is present.
+    const hasStructuredLocation = Boolean(location.neighbourhood || location.sublocality)
+    const hasAnyLocation = Object.keys(location).some(
+      (k) => k !== "displayLocation" && (location as Record<string, unknown>)[k],
+    )
+
     const googleDetails: GoogleDetails = {
       detailsLastSyncedAt: new Date().toISOString(),
     }
     if (hasAmenities) googleDetails.amenities = amenities
     if (editorialSummary) googleDetails.editorialSummary = editorialSummary
+    if (hasAnyLocation) googleDetails.location = location
 
     return {
       ok: true,
@@ -161,6 +208,8 @@ export async function fetchPlaceDetails(placeId: string, apiKey: string): Promis
       googleDetails,
       hasAmenities,
       hasEditorialSummary,
+      hasStructuredLocation,
+      displayLocation: location.displayLocation || undefined,
     }
   } catch (error) {
     return {
@@ -168,6 +217,7 @@ export async function fetchPlaceDetails(placeId: string, apiKey: string): Promis
       status: 0,
       hasAmenities: false,
       hasEditorialSummary: false,
+      hasStructuredLocation: false,
       error: error instanceof Error ? error.message : "Unknown error",
     }
   }

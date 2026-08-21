@@ -14,6 +14,7 @@ import {
   getLocationLabel,
 } from "@/lib/business/normalise-business"
 import { formatPriceLevel } from "@/lib/business/category-mapping"
+import { getBusinessFullAddress } from "@/lib/business/location"
 import { getAmenityChips } from "@/lib/business/amenities"
 import { PhotoGallery } from "@/components/photo-gallery"
 import { cn } from "@/lib/utils"
@@ -188,7 +189,18 @@ export default function BusinessDetailPage({ params }: { params: Promise<{ id: s
                 )}
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <MapPin className="h-4 w-4" />
-                  <span>{getLocationLabel(business)}</span>
+                  <div className="flex flex-col">
+                    <span>{getLocationLabel(business)}</span>
+                    {/* Full Google address, shown only when it adds detail
+                        beyond the short area label. */}
+                    {(() => {
+                      const full = getBusinessFullAddress(business)
+                      const short = getLocationLabel(business)
+                      return full && full !== short ? (
+                        <span className="text-xs text-muted-foreground/70">{full}</span>
+                      ) : null
+                    })()}
+                  </div>
                 </div>
               </div>
             </div>

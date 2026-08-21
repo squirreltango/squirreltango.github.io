@@ -7,6 +7,7 @@ import type {
   TrustpilotRating,
 } from "@/lib/types/business"
 import { mapCategory, parsePriceLevel } from "@/lib/business/category-mapping"
+import { getBusinessDisplayLocation } from "@/lib/business/location"
 
 export const PLACEHOLDER_IMAGE = "/placeholder.svg"
 
@@ -235,10 +236,13 @@ export function getBusinessImages(business: Business): string[] {
   return [getHeroImage(business)]
 }
 
-/** Human-readable location label, empty string when unknown. */
+/**
+ * Human-readable short location label, empty string when unknown.
+ *
+ * Delegates to the single location resolver so cards, AI picks, search, map
+ * popups and detail pages all show the SAME label derived from genuine Google
+ * structured address data (with the city only ever a final fallback).
+ */
 export function getLocationLabel(business: Business): string {
-  const { neighbourhood, city, address } = business.location
-  const parts = [neighbourhood, city].filter(Boolean)
-  if (parts.length > 0) return parts.join(", ")
-  return address || city || neighbourhood || ""
+  return getBusinessDisplayLocation(business)
 }

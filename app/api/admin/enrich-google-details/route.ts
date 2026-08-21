@@ -3,6 +3,7 @@ import { verifyAdminRequest } from "@/lib/admin-auth"
 import { fetchLiveBusinesses } from "@/lib/business/places-search"
 import { fetchPlaceDetails, getFieldMask } from "@/lib/business/place-details"
 import { readCachedDetails, writeCachedDetails, isFresh } from "@/lib/business/google-details-cache"
+import { getBusinessDisplayLocation } from "@/lib/business/location"
 import type { Business } from "@/lib/types/business"
 
 export const dynamic = "force-dynamic"
@@ -104,10 +105,16 @@ export async function POST(request: NextRequest) {
     enriched: 0,
     withAmenities: 0,
     withEditorialSummary: 0,
+    withStructuredLocation: 0,
+    stillCityOnly: 0,
     noAdditionalData: 0,
     durableWrites: 0,
     memoryOnlyWrites: 0,
     errors: [] as { name: string; placeId: string; error: string }[],
+    // Old (pre-enrichment) vs new (structured) location, so the operator can
+    // confirm the improvement per venue.
+    locationSamples: [] as { name: string; oldLocation: string; newLocation: string }[],
+    cityOnly: [] as { name: string; reason: string }[],
     samples: [] as {
       name: string
       category: string
@@ -137,6 +144,28 @@ export async function POST(request: NextRequest) {
     if (result.hasAmenities) report.withAmenities += 1
     if (result.hasEditorialSummary) report.withEditorialSummary += 1
     if (!result.hasAmenities && !result.hasEditorialSummary) report.noAdditionalData += 1
+
+    // Location coverage: compare the pre-enrichment label (typically just the
+    // city fallback) with the new structured display location.
+    const oldLocation = getBusinessDisplayLocation(business)
+    const newLocation = result.displayLocation ?? oldLocation
+    if (result.hasStructuredLocation) {
+      report.withStructuredLocation += 1
+      if (report.locationSamples.length < 20) {
+        report.locationSamples.push({ name: business.name, oldLocation, newLocation })
+      }
+    } else {
+      report.stillCityOnly += 1
+      // Explain WHY there is no more specific area: Google returned no
+      // neighbourhood/sublocality component for this venue.
+      const loc = result.googleDetails?.location
+      const reason = loc
+        ? "Google returned no neighbourhood/sublocality component for this place"
+        : "Google returned no address components for this place"
+      if (report.cityOnly.length < 20) {
+        report.cityOnly.push({ name: business.name, reason })
+      }
+    }
 
     // Collect a small sample for the report (first 8 enriched).
     if (report.samples.length < 8) {
@@ -171,6 +200,8 @@ export async function POST(request: NextRequest) {
     thisBatchUsd: Number(((report.placeDetailsApiCalls / 1000) * SKU_PRICE_PER_1000_USD).toFixed(4)),
     per100BusinessesUsd: Number(((100 / 1000) * SKU_PRICE_PER_1000_USD).toFixed(4)),
     note: "One Place Details call per business per 7-day window. Cached results serve for free until they expire.",
+    locationCost:
+      "Structured location (addressComponents/formattedAddress/location) is Place Details Essentials tier. Billing is the single highest tier per request, which is already Atmosphere, so location added $0.",
   }
 
   return Response.json({ report, estimate })

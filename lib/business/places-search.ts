@@ -3,6 +3,8 @@ import "server-only"
 import type { Business, OpeningHours } from "@/lib/types/business"
 import { mapGooglePlaceToBusiness, type GooglePlaceResult } from "@/lib/business/google-places"
 import { readCachedDetails } from "@/lib/business/google-details-cache"
+import { parseLegacyAddressComponents, type LegacyAddressComponent } from "@/lib/business/location"
+import type { GoogleDetails } from "@/lib/types/business"
 
 const TEXT_SEARCH_URL = "https://maps.googleapis.com/maps/api/place/textsearch/json"
 const DETAILS_URL = "https://maps.googleapis.com/maps/api/place/details/json"
@@ -147,6 +149,11 @@ export async function fetchLiveBusinessById(placeId: string): Promise<Business |
       "rating",
       "user_ratings_total",
       "formatted_address",
+      // Structured location. `address_component` is a Basic Data field and adds
+      // no incremental cost to this Details call (which already requests
+      // reviews/opening_hours), so the detail page gets an accurate area for
+      // free even before background enrichment runs.
+      "address_component",
       "types",
       "price_level",
       "geometry",
@@ -169,6 +176,7 @@ export async function fetchLiveBusinessById(placeId: string): Promise<Business |
       status?: string
       error_message?: string
       result?: GooglePlaceResult & {
+        address_components?: LegacyAddressComponent[]
         opening_hours?: { weekday_text?: string[]; open_now?: boolean }
         formatted_phone_number?: string
         website?: string
@@ -194,11 +202,41 @@ export async function fetchLiveBusinessById(placeId: string): Promise<Business |
     // Attach cached Google Place Details enrichment (amenities/editorial summary)
     // for this venue. Pure cache read - never calls Place Details (New) here.
     const cached = await readCachedDetails([placeId])
-    const googleDetails = cached.get(placeId)
+    const cachedDetails = cached.get(placeId)
+
+    // Parse the structured address components this Details call returned (legacy
+    // Basic Data - no extra cost). Prefer the enrichment cache's location when
+    // it already resolved a specific area; otherwise use this live parse.
+    const liveLocation = parseLegacyAddressComponents(result.address_components, {
+      formattedAddress: result.formatted_address,
+      coordinates: business.location.coordinates,
+    })
+    const cachedHasArea = Boolean(
+      cachedDetails?.location?.neighbourhood || cachedDetails?.location?.sublocality,
+    )
+    const resolvedLocation = cachedHasArea ? cachedDetails!.location : liveLocation
+
+    const googleDetails: GoogleDetails | undefined =
+      cachedDetails || resolvedLocation
+        ? { ...(cachedDetails ?? {}), ...(resolvedLocation ? { location: resolvedLocation } : {}) }
+        : undefined
+
+    // Merge structured location into the base model WITHOUT touching existing
+    // coordinates (per requirement: never change map coordinates).
+    const mergedLocation = {
+      ...business.location,
+      address: resolvedLocation?.formattedAddress ?? business.location.address,
+      neighbourhood:
+        resolvedLocation?.neighbourhood ??
+        resolvedLocation?.sublocality ??
+        business.location.neighbourhood,
+      postcode: resolvedLocation?.postcode ?? business.location.postcode,
+    }
 
     // Layer on the detail-only fields the search endpoint doesn't return.
     return {
       ...business,
+      location: mergedLocation,
       ...(googleDetails ? { googleDetails } : {}),
       openingHours: result.opening_hours?.weekday_text?.length
         ? parseWeekdayText(result.opening_hours.weekday_text)
