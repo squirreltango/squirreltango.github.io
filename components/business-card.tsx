@@ -18,6 +18,7 @@ import {
   getFactualSummary,
   type InsightTone,
 } from "@/lib/business/google-insights"
+import { getTopAmenityChips } from "@/lib/business/amenities"
 import { cn } from "@/lib/utils"
 
 interface BusinessCardProps {
@@ -150,10 +151,21 @@ export function BusinessCard({ business, index = 0, searchQuery }: BusinessCardP
   const reviewContext = getReviewContext(google?.reviews)
   // Pretty, human category tags derived from Google types.
   const prettyTags = useMemo(() => getPrettyTags(business.tags, business.category), [business.tags, business.category])
-  // A factual one-line summary for live listings that have no curated copy.
+  // Up to 3 real Google amenity chips, prioritised by category. Empty when
+  // Google confirmed nothing - we render no chip row in that case.
+  const amenityChips = useMemo(
+    () => getTopAmenityChips(business.googleDetails, business.category, 3),
+    [business.googleDetails, business.category],
+  )
+  // Description precedence: curated copy first, then Google's editorial summary
+  // (real Google text, used as an optional description), then a factual fallback
+  // for live listings. Never fabricated.
   const isLiveListing = business.source === "google" || business.source === "ai"
+  const editorialSummary = business.googleDetails?.editorialSummary
   const displayDescription =
-    business.description ?? (isLiveListing ? getFactualSummary(business) : null)
+    business.description ??
+    editorialSummary ??
+    (isLiveListing ? getFactualSummary(business) : null)
   // Footer wording must not over-claim. Live Google listings are labelled as
   // such; only genuinely verified curated listings say "Verified".
   const isVerified = business.flags.verified === true
@@ -499,6 +511,27 @@ export function BusinessCard({ business, index = 0, searchQuery }: BusinessCardP
               </div>
             )}
           </div>
+          )}
+
+          {/* Google amenity chips - only real, Google-confirmed amenities, max 3,
+              prioritised by category. Rendered as accent pills so they read as
+              features rather than plain category tags. */}
+          {amenityChips.length > 0 && (
+            <div className="flex items-center gap-1.5 flex-wrap mb-4">
+              {amenityChips.map((chip) => (
+                <span
+                  key={chip.key}
+                  className={cn(
+                    "inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium",
+                    "bg-primary/10 text-primary border border-primary/20",
+                    "transition-all duration-300",
+                  )}
+                >
+                  <span className="h-1.5 w-1.5 rounded-full bg-primary/70" aria-hidden="true" />
+                  {chip.label}
+                </span>
+              ))}
+            </div>
           )}
           
           {/* Description / factual summary with highlighting */}

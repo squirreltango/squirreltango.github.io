@@ -2,6 +2,7 @@ import "server-only"
 
 import type { Business, OpeningHours } from "@/lib/types/business"
 import { mapGooglePlaceToBusiness, type GooglePlaceResult } from "@/lib/business/google-places"
+import { readCachedDetails } from "@/lib/business/google-details-cache"
 
 const TEXT_SEARCH_URL = "https://maps.googleapis.com/maps/api/place/textsearch/json"
 const DETAILS_URL = "https://maps.googleapis.com/maps/api/place/details/json"
@@ -252,7 +253,39 @@ export async function fetchLiveBusinesses(
     (a, b) => (b.rating?.overall ?? 0) - (a.rating?.overall ?? 0),
   )
 
-  cache.set(cacheKey, { businesses, expiresAt: Date.now() + CACHE_TTL_MS })
+  // Attach any cached Google Place Details enrichment. This is a pure READ of
+  // the Supabase cache - it never calls Google, so the homepage stays on the
+  // cheap Text Search SKU. Businesses without cached enrichment are unchanged.
+  const enriched = await attachCachedDetails(businesses)
 
-  return businesses
+  cache.set(cacheKey, { businesses: enriched, expiresAt: Date.now() + CACHE_TTL_MS })
+
+  return enriched
+}
+
+/**
+ * Attach cached Google Place Details enrichment to live businesses by place id.
+ * Read-only and failure-tolerant: on any cache miss or error the businesses are
+ * returned exactly as they came in.
+ */
+async function attachCachedDetails(businesses: Business[]): Promise<Business[]> {
+  const placeIds = businesses
+    .map((b) => b.externalIds?.googlePlaceId ?? b.id)
+    .filter((id): id is string => Boolean(id))
+
+  if (placeIds.length === 0) return businesses
+
+  try {
+    const cached = await readCachedDetails(placeIds)
+    if (cached.size === 0) return businesses
+
+    return businesses.map((business) => {
+      const key = business.externalIds?.googlePlaceId ?? business.id
+      const details = key ? cached.get(key) : undefined
+      return details ? { ...business, googleDetails: details } : business
+    })
+  } catch (error) {
+    console.error("[v0] attachCachedDetails failed; serving un-enriched:", error)
+    return businesses
+  }
 }

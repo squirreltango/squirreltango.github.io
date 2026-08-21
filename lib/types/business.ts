@@ -47,6 +47,37 @@ export interface OpeningHours {
   closed?: boolean
 }
 
+// The set of Google "Atmosphere" amenity flags we request and display. Every
+// field is optional and tri-state by absence: `true` means Google explicitly
+// says yes, `false` means Google explicitly says no, and `undefined` means
+// Google returned nothing - in which case we show nothing (never a "No" chip).
+export interface GoogleAmenities {
+  outdoorSeating?: boolean
+  reservable?: boolean
+  servesCocktails?: boolean
+  servesCoffee?: boolean
+  servesBreakfast?: boolean
+  servesBrunch?: boolean
+  servesLunch?: boolean
+  servesDinner?: boolean
+  takeout?: boolean
+  delivery?: boolean
+  wheelchairAccessible?: boolean
+  freeParking?: boolean
+  paidParking?: boolean
+}
+
+// Enrichment sourced from Google Place Details (New). Kept clearly namespaced
+// so this data is always identifiable as Google-derived and never conflated
+// with curated LookMeUp content or other providers.
+export interface GoogleDetails {
+  amenities?: GoogleAmenities
+  editorialSummary?: string
+  // ISO timestamp of the last successful Place Details sync. Drives the 7-day
+  // freshness window that keeps us from re-billing Google on every load.
+  detailsLastSyncedAt?: string
+}
+
 export interface Business {
   id: string
   source: BusinessSource
@@ -107,6 +138,10 @@ export interface Business {
   openNow?: boolean
   tags: string[]
   amenities: string[]
+
+  // Optional Google Place Details (New) enrichment. Absent until a business has
+  // been enriched; the UI renders nothing extra when it is missing.
+  googleDetails?: GoogleDetails
 
   openingHours: OpeningHours[]
 

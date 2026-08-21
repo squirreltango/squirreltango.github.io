@@ -14,6 +14,7 @@ import {
   getLocationLabel,
 } from "@/lib/business/normalise-business"
 import { formatPriceLevel } from "@/lib/business/category-mapping"
+import { getAmenityChips } from "@/lib/business/amenities"
 import { PhotoGallery } from "@/components/photo-gallery"
 import { cn } from "@/lib/utils"
 import { notFound } from "next/navigation"
@@ -192,12 +193,20 @@ export default function BusinessDetailPage({ params }: { params: Promise<{ id: s
               </div>
             </div>
 
-            <p 
-              className="text-muted-foreground leading-relaxed text-lg mb-8"
-              style={{ animation: 'fadeInUp 0.4s ease-out 0.25s forwards', opacity: 0 }}
-            >
-              {business.description}
-            </p>
+            {(business.description || business.googleDetails?.editorialSummary) && (
+              <div style={{ animation: 'fadeInUp 0.4s ease-out 0.25s forwards', opacity: 0 }} className="mb-8">
+                <p className="text-muted-foreground leading-relaxed text-lg">
+                  {business.description || business.googleDetails?.editorialSummary}
+                </p>
+                {/* Attribute the copy to Google when it comes from Google's
+                    editorial summary (and there is no curated description). */}
+                {!business.description && business.googleDetails?.editorialSummary && (
+                  <span className="mt-2 inline-block text-xs text-muted-foreground/70">
+                    Summary from Google
+                  </span>
+                )}
+              </div>
+            )}
 
             {/* Tags */}
             <div 
@@ -217,6 +226,38 @@ export default function BusinessDetailPage({ params }: { params: Promise<{ id: s
                 </span>
               ))}
             </div>
+
+            {/* Google amenities - full set. Only real, Google-confirmed
+                amenities appear; the section is hidden entirely when none. */}
+            {(() => {
+              const allAmenities = getAmenityChips(business.googleDetails, business.category)
+              if (allAmenities.length === 0) return null
+              return (
+                <div
+                  className="mb-8"
+                  style={{ animation: 'fadeInUp 0.4s ease-out 0.31s forwards', opacity: 0 }}
+                >
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4">
+                    Amenities
+                    <span className="ml-2 normal-case font-normal text-muted-foreground/60">via Google</span>
+                  </h3>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {allAmenities.map((chip) => (
+                      <span
+                        key={chip.key}
+                        className={cn(
+                          "inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium",
+                          "bg-primary/10 text-primary border border-primary/20",
+                        )}
+                      >
+                        <span className="h-1.5 w-1.5 rounded-full bg-primary/70" aria-hidden="true" />
+                        {chip.label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )
+            })()}
 
             {/* Ratings Breakdown Section */}
             <div 
