@@ -24,7 +24,17 @@ export const FRESHNESS_WINDOW_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 const TABLE = "google_place_details"
 
 // In-process mirror. Not a substitute for Supabase - just an accelerator.
-const memoryCache = new Map<string, GoogleDetails>()
+//
+// It is pinned to globalThis so every route bundle in the same server process
+// shares ONE map. Without this, Next.js gives each route (e.g. the admin
+// enrich route vs. the businesses API) its own module instance, so enrichment
+// written by one route would be invisible to another until it hit Supabase.
+const globalForCache = globalThis as unknown as {
+  __googleDetailsMemoryCache?: Map<string, GoogleDetails>
+}
+const memoryCache: Map<string, GoogleDetails> =
+  globalForCache.__googleDetailsMemoryCache ?? new Map<string, GoogleDetails>()
+globalForCache.__googleDetailsMemoryCache = memoryCache
 
 // Detect the "relation does not exist" / "table not found" family of errors so
 // we can degrade quietly before the migration has been applied.

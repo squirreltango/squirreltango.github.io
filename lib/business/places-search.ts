@@ -191,9 +191,15 @@ export async function fetchLiveBusinessById(placeId: string): Promise<Business |
     const result = payload.result
     const business = mapGooglePlaceToBusiness(result)
 
+    // Attach cached Google Place Details enrichment (amenities/editorial summary)
+    // for this venue. Pure cache read - never calls Place Details (New) here.
+    const cached = await readCachedDetails([placeId])
+    const googleDetails = cached.get(placeId)
+
     // Layer on the detail-only fields the search endpoint doesn't return.
     return {
       ...business,
+      ...(googleDetails ? { googleDetails } : {}),
       openingHours: result.opening_hours?.weekday_text?.length
         ? parseWeekdayText(result.opening_hours.weekday_text)
         : business.openingHours,
@@ -236,7 +242,11 @@ export async function fetchLiveBusinesses(
   const cacheKey = queries.join("|")
   const cached = cache.get(cacheKey)
   if (cached && cached.expiresAt > Date.now()) {
-    return cached.businesses
+    // Re-attach enrichment on the cached path too. The Text Search cache stores
+    // only the raw venues; enrichment freshness is governed separately by the
+    // Supabase cache, so newly-enriched data appears without waiting for the
+    // Text Search cache to expire. This is a pure read - no Google Details call.
+    return attachCachedDetails(cached.businesses)
   }
 
   const settled = await Promise.all(queries.map((query) => searchOnce(query, apiKey)))
@@ -253,14 +263,13 @@ export async function fetchLiveBusinesses(
     (a, b) => (b.rating?.overall ?? 0) - (a.rating?.overall ?? 0),
   )
 
+  // Cache the RAW venues (without enrichment) so enrichment stays decoupled.
+  cache.set(cacheKey, { businesses, expiresAt: Date.now() + CACHE_TTL_MS })
+
   // Attach any cached Google Place Details enrichment. This is a pure READ of
   // the Supabase cache - it never calls Google, so the homepage stays on the
   // cheap Text Search SKU. Businesses without cached enrichment are unchanged.
-  const enriched = await attachCachedDetails(businesses)
-
-  cache.set(cacheKey, { businesses: enriched, expiresAt: Date.now() + CACHE_TTL_MS })
-
-  return enriched
+  return attachCachedDetails(businesses)
 }
 
 /**
