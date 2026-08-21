@@ -13,7 +13,9 @@ export interface GooglePlaceResult {
   price_level?: number
   opening_hours?: { open_now?: boolean }
   geometry?: { location?: { lat?: number; lng?: number } }
-  photos?: { photo_reference?: string }[]
+  // Legacy Places photos include pixel dimensions, which we use to prefer a
+  // landscape hero image deterministically.
+  photos?: { photo_reference?: string; width?: number; height?: number }[]
 }
 
 /**
@@ -59,8 +61,22 @@ export function mapGooglePlaceToBusiness(
   const address = place.formatted_address || place.vicinity || undefined
   const types = Array.isArray(place.types) ? place.types.filter(Boolean) : []
 
-  // Google returns photo references rather than URLs; proxy them.
-  const images = (place.photos || [])
+  // Google returns photo references rather than URLs; proxy them. We reorder so
+  // the first landscape photo becomes the hero (better for a 4:3 card) while
+  // keeping the rest of Google's ordering. This is deterministic - the same
+  // place always yields the same hero - and never invents imagery.
+  const photoObjects = (place.photos || []).filter((photo) => Boolean(photo.photo_reference))
+  const heroIndex = photoObjects.findIndex(
+    (photo) =>
+      typeof photo.width === "number" &&
+      typeof photo.height === "number" &&
+      photo.width >= photo.height,
+  )
+  const orderedPhotos =
+    heroIndex > 0
+      ? [photoObjects[heroIndex], ...photoObjects.filter((_, i) => i !== heroIndex)]
+      : photoObjects
+  const images = orderedPhotos
     .map((photo) => photo.photo_reference)
     .filter((ref): ref is string => Boolean(ref))
     .map((ref) => buildPlacePhotoUrl(ref))
@@ -84,6 +100,7 @@ export function mapGooglePlaceToBusiness(
           : undefined,
       images: images.length > 0 ? images : undefined,
       priceLevel: place.price_level,
+      openNow: typeof place.opening_hours?.open_now === "boolean" ? place.opening_hours.open_now : undefined,
       // Specific Google types double as lightweight, human-readable tags.
       tags: types
         .filter((type) => !GENERIC_PLACE_TYPES.has(type))

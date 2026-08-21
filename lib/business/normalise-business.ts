@@ -57,6 +57,7 @@ export interface NormaliseBusinessInput {
   ratings?: RatingsInput | null
 
   priceLevel?: string | number | null
+  openNow?: boolean | null
 
   tags?: string[] | null
   amenities?: string[] | null
@@ -196,6 +197,7 @@ export function normaliseBusiness(
     rating,
     providerRatings,
     priceLevel: parsePriceLevel(input.priceLevel),
+    openNow: typeof input.openNow === "boolean" ? input.openNow : undefined,
     tags: toArray(input.tags),
     amenities: toArray(input.amenities),
     openingHours: toArray(input.openingHours),

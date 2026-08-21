@@ -102,6 +102,9 @@ export interface Business {
   }
 
   priceLevel?: 1 | 2 | 3 | 4
+  // Live "open right now" flag from Google's `open_now`. Only set for live
+  // listings; undefined means "unknown", never "closed".
+  openNow?: boolean
   tags: string[]
   amenities: string[]
 

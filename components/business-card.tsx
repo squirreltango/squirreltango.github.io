@@ -2,7 +2,7 @@
 
 import Image from "next/image"
 import Link from "next/link"
-import { Star, MapPin, Heart, Instagram, ShieldCheck, Building2, TrendingUp, ChevronLeft, ChevronRight, BadgeCheck, Zap, Search } from "lucide-react"
+import { Star, MapPin, Heart, Instagram, ShieldCheck, Building2, TrendingUp, ChevronLeft, ChevronRight, Zap, Search, Sparkles, Award, Gem, Clock } from "lucide-react"
 import { useState, useCallback, useMemo } from "react"
 import type { Business } from "@/lib/types/business"
 import {
@@ -10,7 +10,14 @@ import {
   getHeadlineRating,
   getLocationLabel,
 } from "@/lib/business/normalise-business"
-import { formatPriceLevel } from "@/lib/business/category-mapping"
+import { formatPriceLevel, getPrettyTags } from "@/lib/business/category-mapping"
+import {
+  getPrimaryInsightBadge,
+  getRatingInterpretation,
+  getReviewContext,
+  getFactualSummary,
+  type InsightTone,
+} from "@/lib/business/google-insights"
 import { cn } from "@/lib/utils"
 
 interface BusinessCardProps {
@@ -52,48 +59,73 @@ function extractKeywords(query: string | null | undefined): string[] {
     .filter(word => word.length > 2 && !stopWords.includes(word))
 }
 
-// Determine smart tags based on business data and search query
-function getSmartTags(business: Business, searchQuery: string | null | undefined): { label: string; variant: 'match' | 'popular' | 'rated' }[] {
-  const tags: { label: string; variant: 'match' | 'popular' | 'rated' }[] = []
+type BadgeVariant = 'match' | InsightTone | 'trending'
+
+// Pick the ONE primary hero badge for the card. Search relevance wins while the
+// user is searching; otherwise we fall back to genuine signals - a real
+// Instagram trend, then a derived insight from live Google data.
+function getPrimaryBadge(
+  business: Business,
+  searchQuery: string | null | undefined,
+): { label: string; variant: BadgeVariant } | null {
   const keywords = extractKeywords(searchQuery)
   const description = business.description ?? ""
   const location = getLocationLabel(business)
 
-  // Prefer AI-generated match reasons when present
+  // 1. Search relevance - most useful thing to surface during a search.
   const hasMatchReasons = (business.ai?.matchReasons?.length ?? 0) > 0
-
-  // Check if matches search
   if (hasMatchReasons) {
-    tags.push({ label: 'Matches your search', variant: 'match' })
-  } else if (keywords.length > 0) {
+    return { label: 'Matches your search', variant: 'match' }
+  }
+  if (keywords.length > 0) {
     const businessText = `${business.name} ${description} ${business.tags.join(' ')} ${location}`.toLowerCase()
-    const matchCount = keywords.filter(k => businessText.includes(k)).length
-    if (matchCount > 0) {
-      tags.push({ label: 'Matches your search', variant: 'match' })
+    if (keywords.some(k => businessText.includes(k))) {
+      return { label: 'Matches your search', variant: 'match' }
     }
   }
-  
-  // Check for wedding-related
-  if (searchQuery?.toLowerCase().includes('wedding')) {
-    const weddingKeywords = ['bridal', 'wedding', 'luxury', 'elegant', 'styling', 'makeup', 'hair']
-    const hasWeddingService = weddingKeywords.some(k => 
-      description.toLowerCase().includes(k) || 
-      business.tags.some(t => t.toLowerCase().includes(k))
-    )
-    if (hasWeddingService) {
-      tags.push({ label: 'Popular for weddings', variant: 'popular' })
-    }
+
+  // 2. A genuine social trend signal (curated/Instagram data only).
+  if (business.providerRatings.instagram?.trending) {
+    return { label: 'Trending now', variant: 'trending' }
   }
-  
-  // Check if highly rated (only when the data supports it)
-  const google = business.providerRatings.google
-  if (google?.rating !== undefined && google.rating >= 4.7 && (google.reviews ?? 0) > 1000) {
-    tags.push({ label: 'Highly rated', variant: 'rated' })
-  } else if (business.providerRatings.instagram?.trending) {
-    tags.push({ label: 'Trending now', variant: 'popular' })
+
+  // 3. Derived insight from real Google data (5★ favourite, Highly rated, etc.)
+  const insight = getPrimaryInsightBadge(business)
+  if (insight) return { label: insight.label, variant: insight.tone }
+
+  return null
+}
+
+// Icon + colour treatment per badge variant.
+const BADGE_STYLES: Record<BadgeVariant, string> = {
+  match: 'bg-amber-500/90 text-white',
+  trending: 'bg-pink-500/90 text-white',
+  popular: 'bg-pink-500/90 text-white',
+  top: 'bg-emerald-500/90 text-white',
+  rated: 'bg-emerald-500/90 text-white',
+  gem: 'bg-violet-500/90 text-white',
+  open: 'bg-teal-500/90 text-white',
+  category: 'bg-foreground/80 text-background',
+}
+
+function BadgeIcon({ variant }: { variant: BadgeVariant }) {
+  switch (variant) {
+    case 'match':
+      return <Search className="h-3 w-3" />
+    case 'trending':
+    case 'popular':
+      return <TrendingUp className="h-3 w-3" />
+    case 'top':
+      return <Sparkles className="h-3 w-3" />
+    case 'rated':
+      return <Award className="h-3 w-3" />
+    case 'gem':
+      return <Gem className="h-3 w-3" />
+    case 'open':
+      return <Clock className="h-3 w-3" />
+    default:
+      return <Star className="h-3 w-3" />
   }
-  
-  return tags.slice(0, 2) // Max 2 tags
 }
 
 export function BusinessCard({ business, index = 0, searchQuery }: BusinessCardProps) {
@@ -103,7 +135,7 @@ export function BusinessCard({ business, index = 0, searchQuery }: BusinessCardP
   
   const images = getBusinessImages(business)
   const keywords = useMemo(() => extractKeywords(searchQuery), [searchQuery])
-  const smartTags = useMemo(() => getSmartTags(business, searchQuery), [business, searchQuery])
+  const primaryBadge = useMemo(() => getPrimaryBadge(business, searchQuery), [business, searchQuery])
 
   const headlineRating = getHeadlineRating(business)
   const priceLabel = formatPriceLevel(business.priceLevel)
@@ -112,6 +144,24 @@ export function BusinessCard({ business, index = 0, searchQuery }: BusinessCardP
   const instagram = business.providerRatings.instagram
   const foodHygiene = business.providerRatings.foodHygiene
   const bookingCom = business.providerRatings.bookingCom
+
+  // Real Google data only. These stay null/undefined when the data is absent.
+  const ratingInterpretation = getRatingInterpretation(google?.rating)
+  const reviewContext = getReviewContext(google?.reviews)
+  // Pretty, human category tags derived from Google types.
+  const prettyTags = useMemo(() => getPrettyTags(business.tags, business.category), [business.tags, business.category])
+  // A factual one-line summary for live listings that have no curated copy.
+  const isLiveListing = business.source === "google" || business.source === "ai"
+  const displayDescription =
+    business.description ?? (isLiveListing ? getFactualSummary(business) : null)
+  // Footer wording must not over-claim. Live Google listings are labelled as
+  // such; only genuinely verified curated listings say "Verified".
+  const isVerified = business.flags.verified === true
+  // When only Google data exists we render a richer, full-width Google module
+  // instead of a half-empty two-column grid.
+  const hasOtherProviders =
+    Boolean(instagram) || foodHygiene !== undefined || bookingCom !== undefined
+  const showRichGoogle = google?.rating !== undefined && !hasOtherProviders
   
   const nextImage = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
@@ -156,31 +206,24 @@ export function BusinessCard({ business, index = 0, searchQuery }: BusinessCardP
             isHovered ? "opacity-100" : "opacity-60"
           )} />
           
-          {/* Smart Tags */}
-          {smartTags.length > 0 && (
-            <div className="absolute top-4 left-4 flex flex-col gap-2">
-              {smartTags.map((tag, idx) => (
-                <div 
-                  key={idx}
-                  className={cn(
-                    "flex items-center gap-1.5 px-2.5 py-1.5 rounded-full backdrop-blur-md shadow-lg",
-                    "transition-all duration-300 text-xs font-medium",
-                    tag.variant === 'match' && "bg-amber-500/90 text-white",
-                    tag.variant === 'popular' && "bg-pink-500/90 text-white",
-                    tag.variant === 'rated' && "bg-emerald-500/90 text-white"
-                  )}
-                >
-                  {tag.variant === 'match' && <Search className="h-3 w-3" />}
-                  {tag.variant === 'popular' && <TrendingUp className="h-3 w-3" />}
-                  {tag.variant === 'rated' && <Star className="h-3 w-3" />}
-                  {tag.label}
-                </div>
-              ))}
+          {/* Primary hero badge - exactly one, chosen by priority. */}
+          {primaryBadge && (
+            <div className="absolute top-4 left-4">
+              <div
+                className={cn(
+                  "flex items-center gap-1.5 px-2.5 py-1.5 rounded-full backdrop-blur-md shadow-lg",
+                  "transition-all duration-300 text-xs font-medium",
+                  BADGE_STYLES[primaryBadge.variant],
+                )}
+              >
+                <BadgeIcon variant={primaryBadge.variant} />
+                {primaryBadge.label}
+              </div>
             </div>
           )}
           
-          {/* Instagram Source Label - Show when no smart tags and Instagram data exists */}
-          {smartTags.length === 0 && instagram && (
+          {/* Instagram Source Label - only when no badge and real Instagram data exists */}
+          {!primaryBadge && instagram && (
             <div className="absolute top-4 left-4 flex items-center gap-2">
               <div className={cn(
                 "flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-card/90 backdrop-blur-md shadow-lg",
@@ -308,7 +351,59 @@ export function BusinessCard({ business, index = 0, searchQuery }: BusinessCardP
             </div>
           )}
           
-          {/* Ratings Data Section */}
+          {/* Rich Google module - shown for live listings with only Google data.
+              Provider fact (rating/reviews) and LookMeUp interpretation are
+              visually separated so users know which is which. */}
+          {showRichGoogle && (
+            <div className={cn(
+              "flex items-center justify-between gap-3 mb-4 p-3 rounded-2xl bg-secondary/30 border border-border/30",
+              "transition-all duration-300",
+              isHovered && "bg-secondary/50 border-border/50"
+            )}>
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-card flex items-center justify-center shadow-sm shrink-0">
+                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                  </svg>
+                </div>
+                <div className="flex flex-col">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-base font-semibold text-foreground leading-none">
+                      {google?.rating?.toFixed(1)}
+                    </span>
+                    <span className="flex items-center gap-0.5" aria-hidden="true">
+                      {Array.from({ length: 5 }).map((_, i) => (
+                        <Star
+                          key={i}
+                          className={cn(
+                            "h-3 w-3",
+                            i < Math.round(google?.rating ?? 0)
+                              ? "fill-amber-500 text-amber-500"
+                              : "text-muted-foreground/30",
+                          )}
+                        />
+                      ))}
+                    </span>
+                  </div>
+                  {reviewContext && (
+                    <span className="text-xs text-muted-foreground mt-1">{reviewContext}</span>
+                  )}
+                </div>
+              </div>
+              {ratingInterpretation && (
+                <span className="shrink-0 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 text-xs font-semibold">
+                  {ratingInterpretation}
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Multi-provider grid - used when curated data (Instagram, hygiene,
+              Booking.com) exists alongside Google. */}
+          {!showRichGoogle && (
           <div className={cn(
             "grid grid-cols-2 gap-2 mb-4 p-3 rounded-2xl bg-secondary/30 border border-border/30",
             "transition-all duration-300",
@@ -404,18 +499,19 @@ export function BusinessCard({ business, index = 0, searchQuery }: BusinessCardP
               </div>
             )}
           </div>
+          )}
           
-          {/* Description with highlighting */}
-          {business.description && (
+          {/* Description / factual summary with highlighting */}
+          {displayDescription && (
             <p className="text-sm text-muted-foreground leading-relaxed line-clamp-2 mb-4">
-              <HighlightedText text={business.description} keywords={keywords} />
+              <HighlightedText text={displayDescription} keywords={keywords} />
             </p>
           )}
           
-          {/* Tags with highlighting */}
-          {business.tags.length > 0 && (
+          {/* Category tags - attractive labels derived from real Google types */}
+          {prettyTags.length > 0 && (
             <div className="flex items-center gap-2 flex-wrap mb-4">
-              {business.tags.slice(0, 3).map((tag, i) => {
+              {prettyTags.map((tag, i) => {
                 const isHighlighted = keywords.some(k => tag.toLowerCase().includes(k))
                 return (
                   <span
@@ -437,19 +533,27 @@ export function BusinessCard({ business, index = 0, searchQuery }: BusinessCardP
             </div>
           )}
           
-          {/* Trust Indicators */}
+          {/* Footer - honest, source-aware provenance. No "Verified ratings"
+              unless the listing is genuinely flagged verified. */}
           <div className={cn(
             "flex items-center gap-3 pt-3 border-t border-border/40",
             "transition-all duration-300",
             isHovered && "border-border/60"
           )}>
-            <div className="flex items-center gap-1.5 text-muted-foreground">
-              <BadgeCheck className="h-3.5 w-3.5 text-blue-500" />
-              <span className="text-xs">Verified ratings</span>
-            </div>
+            {isVerified ? (
+              <div className="flex items-center gap-1.5 text-muted-foreground">
+                <ShieldCheck className="h-3.5 w-3.5 text-blue-500" />
+                <span className="text-xs">Verified listing</span>
+              </div>
+            ) : google?.rating !== undefined ? (
+              <div className="flex items-center gap-1.5 text-muted-foreground">
+                <Star className="h-3.5 w-3.5 fill-amber-500 text-amber-500" />
+                <span className="text-xs">Google rating</span>
+              </div>
+            ) : null}
             <div className="flex items-center gap-1.5 text-muted-foreground">
               <Zap className="h-3.5 w-3.5 text-amber-500" />
-              <span className="text-xs">Live data</span>
+              <span className="text-xs">{isLiveListing ? "Live listing" : "Live data"}</span>
             </div>
           </div>
         </div>
