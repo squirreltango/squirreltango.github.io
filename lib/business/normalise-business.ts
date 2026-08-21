@@ -4,6 +4,7 @@ import type {
   BusinessSource,
   GalleryImage,
   OpeningHours,
+  TrustpilotRating,
 } from "@/lib/types/business"
 import { mapCategory, parsePriceLevel } from "@/lib/business/category-mapping"
 
@@ -15,6 +16,7 @@ interface RatingsInput {
   instagram?: { followers?: number; trending?: boolean } | null
   foodHygiene?: number
   bookingCom?: number
+  trustpilot?: TrustpilotRating | null
 }
 
 // A permissive input type that accepts legacy-shaped data (flat rating,
@@ -148,6 +150,11 @@ export function normaliseBusiness(
   }
   if (typeof pr.foodHygiene === "number") providerRatings.foodHygiene = pr.foodHygiene
   if (typeof pr.bookingCom === "number") providerRatings.bookingCom = pr.bookingCom
+  // Trustpilot is optional; only pass it through when a valid Business Unit ID
+  // is present so we never surface an empty Trustpilot section.
+  if (pr.trustpilot && typeof pr.trustpilot.businessUnitId === "string" && pr.trustpilot.businessUnitId) {
+    providerRatings.trustpilot = pr.trustpilot
+  }
 
   // ---- Headline rating -----------------------------------------------------
   let overall: number | undefined

@@ -28,6 +28,18 @@ export interface BusinessReview {
   source?: string
 }
 
+// Trustpilot enrichment attached to an existing business. The Business Unit ID
+// is Trustpilot's stable external identifier for the profile.
+export interface TrustpilotRating {
+  businessUnitId: string
+  trustScore?: number
+  stars?: number
+  reviewCount?: number
+  profileUrl?: string
+  lastSyncedAt?: string
+  matchConfidence?: number
+}
+
 export interface OpeningHours {
   day: number // 0 = Sunday ... 6 = Saturday
   open?: string
@@ -84,6 +96,9 @@ export interface Business {
     }
     foodHygiene?: number
     bookingCom?: number
+    // Optional Trustpilot enrichment. Stored independently from Google data and
+    // never averaged together. Absent when there is no confident match.
+    trustpilot?: TrustpilotRating
   }
 
   priceLevel?: 1 | 2 | 3 | 4

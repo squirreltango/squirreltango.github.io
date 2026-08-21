@@ -379,6 +379,66 @@ export default function BusinessDetailPage({ params }: { params: Promise<{ id: s
                     </div>
                   </div>
                 )}
+
+                {/* Trustpilot - independent trust signal, only shown when a
+                    confident match exists. Never averaged with Google. */}
+                {business.providerRatings.trustpilot?.businessUnitId && (
+                  <div className={cn(
+                    "flex flex-col gap-2 p-4 rounded-2xl bg-[#00b67a]/5 border border-[#00b67a]/25",
+                    "transition-all duration-300 hover:bg-[#00b67a]/10 hover:border-[#00b67a]/40"
+                  )}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-xl bg-[#00b67a] flex items-center justify-center">
+                          <Star className="h-4 w-4 fill-white text-white" />
+                        </div>
+                        <span className="text-sm font-medium text-foreground">Trustpilot</span>
+                      </div>
+                      {business.providerRatings.trustpilot.profileUrl && (
+                        <a
+                          href={business.providerRatings.trustpilot.profileUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={cn(
+                            "flex items-center gap-1 px-3 py-1.5 rounded-lg bg-foreground/5 text-xs font-medium text-muted-foreground",
+                            "transition-all duration-300 hover:bg-foreground/10 hover:text-foreground"
+                          )}
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                          View
+                        </a>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-0.5" aria-hidden="true">
+                          {Array.from({ length: 5 }).map((_, i) => (
+                            <Star
+                              key={i}
+                              className={cn(
+                                "h-4 w-4",
+                                i < Math.round(business.providerRatings.trustpilot?.stars ?? 0)
+                                  ? "fill-[#00b67a] text-[#00b67a]"
+                                  : "text-muted-foreground/30"
+                              )}
+                            />
+                          ))}
+                        </div>
+                        {business.providerRatings.trustpilot.trustScore !== undefined && (
+                          <span className="text-lg font-semibold text-foreground ml-1">
+                            {business.providerRatings.trustpilot.trustScore}
+                          </span>
+                        )}
+                      </div>
+                      {business.providerRatings.trustpilot.reviewCount !== undefined && (
+                        <span className="text-sm text-muted-foreground">
+                          {business.providerRatings.trustpilot.reviewCount.toLocaleString()} reviews
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-xs text-muted-foreground">TrustScore on Trustpilot</span>
+                  </div>
+                )}
               </div>
             </div>
 
