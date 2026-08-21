@@ -1,5 +1,10 @@
 import type { GoogleAmenities, GoogleDetails } from "@/lib/types/business"
-import { parseNewAddressComponents, type NewAddressComponent } from "@/lib/business/location"
+import {
+  parseNewAddressComponents,
+  pickBestArea,
+  type NewAddressComponent,
+  type AddressDescriptor,
+} from "@/lib/business/location"
 
 /**
  * Google Place Details (New) enrichment client.
@@ -26,7 +31,10 @@ import { parseNewAddressComponents, type NewAddressComponent } from "@/lib/busin
 // structured-location fields costs NOTHING extra.
 const FIELD_MASK = [
   // Location (Essentials tier - no incremental cost given Atmosphere below).
+  // addressDescriptor.areas supplies genuine neighbourhood names (e.g. "Soho")
+  // that UK addressComponents routinely omit.
   "addressComponents",
+  "addressDescriptor",
   "formattedAddress",
   "shortFormattedAddress",
   "location",
@@ -52,6 +60,7 @@ const PLACES_ENDPOINT = "https://places.googleapis.com/v1/places/"
 // field is optional - Google omits anything it has no data for.
 interface PlaceDetailsResponse {
   addressComponents?: NewAddressComponent[]
+  addressDescriptor?: AddressDescriptor
   formattedAddress?: string
   shortFormattedAddress?: string
   location?: { latitude?: number; longitude?: number }
@@ -183,10 +192,14 @@ export async function fetchPlaceDetails(placeId: string, apiKey: string): Promis
       typeof data.location?.latitude === "number" && typeof data.location?.longitude === "number"
         ? { lat: data.location.latitude, lng: data.location.longitude }
         : undefined
+    // Address Descriptors provide the genuine neighbourhood name when the
+    // structured components omit it (common for UK city-centre addresses).
+    const area = pickBestArea(data.addressDescriptor)
     const location = parseNewAddressComponents(data.addressComponents, {
       formattedAddress: data.formattedAddress,
       shortFormattedAddress: data.shortFormattedAddress,
       coordinates,
+      area,
     })
     // "Structured" means we resolved something more specific than just a city -
     // i.e. an actual neighbourhood/sublocality is present.

@@ -39,31 +39,67 @@ export interface AddressDescriptorArea {
   containment?: "WITHIN" | "OUTSKIRTS" | "NEAR" | "CONTAINMENT_UNSPECIFIED"
 }
 
-export interface AddressDescriptor {
-  areas?: AddressDescriptorArea[]
+export interface AddressDescriptorLandmark {
+  displayName?: { text?: string; languageCode?: string }
+  types?: string[]
 }
 
-// Prefer areas that actually contain the place, and within a tier prefer the
-// more general area name (micro-areas/landmarks tend to have longer names, e.g.
-// "The Yards Covent Garden" vs "Covent Garden").
+export interface AddressDescriptor {
+  areas?: AddressDescriptorArea[]
+  landmarks?: AddressDescriptorLandmark[]
+}
+
+// Prefer areas that actually contain the place (WITHIN) over ones the place is
+// merely on the edge of (OUTSKIRTS). NEAR is excluded entirely - those are
+// proximity references, not the containing neighbourhood.
 const CONTAINMENT_RANK: Record<string, number> = { WITHIN: 0, OUTSKIRTS: 1 }
+
+// Generic facility names Google sometimes returns as "areas" that are not real
+// neighbourhoods. Matched case-insensitively as whole strings.
+const NON_AREA_NAMES = new Set([
+  "parking lot",
+  "parking",
+  "car park",
+  "parking garage",
+  "bus station",
+  "train station",
+  "railway station",
+])
 
 /**
  * Pick the single best neighbourhood-style area from Address Descriptor data.
- * Returns undefined when Google provides no containing area (only NEAR
- * landmarks, or none at all) - we never fabricate one.
+ *
+ * Google occasionally files specific POIs (e.g. "The National Gallery") or
+ * generic facilities (e.g. "Parking lot") under `areas`. We reject those:
+ *   - names that also appear as `landmarks` are POIs, not neighbourhoods;
+ *   - names in NON_AREA_NAMES are generic facilities.
+ * Returns undefined when nothing genuine remains - we never fabricate an area.
  */
 export function pickBestArea(descriptor: AddressDescriptor | undefined): string | undefined {
   const areas = descriptor?.areas ?? []
+  const landmarkNames = new Set(
+    (descriptor?.landmarks ?? [])
+      .map((l) => norm(l.displayName?.text))
+      .filter((n) => n.length > 0),
+  )
+
   const candidates = areas
     .map((a) => ({
       name: (a.displayName?.text ?? "").trim(),
       rank: CONTAINMENT_RANK[a.containment ?? ""],
     }))
-    .filter((a) => a.name.length > 0 && a.rank !== undefined)
+    .filter((a) => {
+      if (!a.name || a.rank === undefined) return false
+      const lower = norm(a.name)
+      if (NON_AREA_NAMES.has(lower)) return false
+      // A name that is also a landmark is a POI, not a neighbourhood.
+      if (landmarkNames.has(lower)) return false
+      return true
+    })
 
   if (candidates.length === 0) return undefined
 
+  // Best containment first; within a tier prefer the more general (shorter) name.
   candidates.sort((a, b) => a.rank - b.rank || a.name.length - b.name.length)
   return candidates[0].name
 }
@@ -144,6 +180,7 @@ export function parseNewAddressComponents(
     formattedAddress?: string
     shortFormattedAddress?: string
     coordinates?: { lat: number; lng: number }
+    area?: string
   } = {},
 ): GoogleLocation {
   return buildLocation(fromNew(components), opts)
@@ -155,6 +192,7 @@ export function parseLegacyAddressComponents(
   opts: {
     formattedAddress?: string
     coordinates?: { lat: number; lng: number }
+    area?: string
   } = {},
 ): GoogleLocation {
   return buildLocation(fromLegacy(components), opts)
