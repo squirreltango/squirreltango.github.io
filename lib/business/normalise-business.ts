@@ -4,8 +4,10 @@ import type {
   BusinessSource,
   GalleryImage,
   OpeningHours,
+  TrustpilotRating,
 } from "@/lib/types/business"
 import { mapCategory, parsePriceLevel } from "@/lib/business/category-mapping"
+import { getBusinessDisplayLocation } from "@/lib/business/location"
 
 export const PLACEHOLDER_IMAGE = "/placeholder.svg"
 
@@ -15,6 +17,7 @@ interface RatingsInput {
   instagram?: { followers?: number; trending?: boolean } | null
   foodHygiene?: number
   bookingCom?: number
+  trustpilot?: TrustpilotRating | null
 }
 
 // A permissive input type that accepts legacy-shaped data (flat rating,
@@ -55,6 +58,7 @@ export interface NormaliseBusinessInput {
   ratings?: RatingsInput | null
 
   priceLevel?: string | number | null
+  openNow?: boolean | null
 
   tags?: string[] | null
   amenities?: string[] | null
@@ -148,6 +152,11 @@ export function normaliseBusiness(
   }
   if (typeof pr.foodHygiene === "number") providerRatings.foodHygiene = pr.foodHygiene
   if (typeof pr.bookingCom === "number") providerRatings.bookingCom = pr.bookingCom
+  // Trustpilot is optional; only pass it through when a valid Business Unit ID
+  // is present so we never surface an empty Trustpilot section.
+  if (pr.trustpilot && typeof pr.trustpilot.businessUnitId === "string" && pr.trustpilot.businessUnitId) {
+    providerRatings.trustpilot = pr.trustpilot
+  }
 
   // ---- Headline rating -----------------------------------------------------
   let overall: number | undefined
@@ -189,6 +198,7 @@ export function normaliseBusiness(
     rating,
     providerRatings,
     priceLevel: parsePriceLevel(input.priceLevel),
+    openNow: typeof input.openNow === "boolean" ? input.openNow : undefined,
     tags: toArray(input.tags),
     amenities: toArray(input.amenities),
     openingHours: toArray(input.openingHours),
@@ -226,10 +236,13 @@ export function getBusinessImages(business: Business): string[] {
   return [getHeroImage(business)]
 }
 
-/** Human-readable location label, empty string when unknown. */
+/**
+ * Human-readable short location label, empty string when unknown.
+ *
+ * Delegates to the single location resolver so cards, AI picks, search, map
+ * popups and detail pages all show the SAME label derived from genuine Google
+ * structured address data (with the city only ever a final fallback).
+ */
 export function getLocationLabel(business: Business): string {
-  const { neighbourhood, city, address } = business.location
-  const parts = [neighbourhood, city].filter(Boolean)
-  if (parts.length > 0) return parts.join(", ")
-  return address || city || neighbourhood || ""
+  return getBusinessDisplayLocation(business)
 }

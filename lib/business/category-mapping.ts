@@ -96,3 +96,88 @@ export function formatPriceLevel(level?: number | null): string {
   if (!level || level < 1) return ""
   return "£".repeat(Math.min(Math.round(level), 4))
 }
+
+// Attractive, user-facing labels for raw Google Places "types". Keys are the
+// raw type strings (with underscores) OR the space-separated form we store as
+// tags. Anything not listed falls back to Title Case so we never show a raw
+// API string like "meal_takeaway".
+const TYPE_LABELS: Record<string, string> = {
+  restaurant: "Restaurant",
+  meal_takeaway: "Takeaway",
+  meal_delivery: "Delivery",
+  bakery: "Bakery",
+  cafe: "Café",
+  coffee_shop: "Coffee",
+  bar: "Cocktail Bar",
+  night_club: "Nightclub",
+  nightclub: "Nightclub",
+  gym: "Gym",
+  fitness_center: "Fitness",
+  beauty_salon: "Beauty Salon",
+  hair_care: "Hair & Beauty",
+  hair_salon: "Hair Salon",
+  nail_salon: "Nail Salon",
+  spa: "Spa & Wellness",
+  physiotherapist: "Physiotherapy",
+  yoga: "Yoga",
+  yoga_studio: "Yoga Studio",
+  wellness: "Wellness",
+  wellness_center: "Wellness",
+  book_store: "Bookshop",
+  clothing_store: "Fashion",
+  store: "Shop",
+}
+
+// Fallback human label per internal category, used when a business has no
+// specific Google type to convert.
+const CATEGORY_LABELS: Record<CategoryId, string> = {
+  food: "Restaurant",
+  fitness: "Fitness",
+  beauty: "Beauty",
+  cafes: "Café",
+  nightlife: "Nightlife",
+  wellness: "Wellness",
+  other: "Local Business",
+}
+
+/** Title Case an arbitrary type/tag string as a safe fallback. */
+function titleCase(value: string): string {
+  return value
+    .replace(/_/g, " ")
+    .trim()
+    .split(/\s+/)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ")
+}
+
+/**
+ * Convert a single raw Google type (or stored space-separated tag) into an
+ * attractive user-facing label. Never returns a raw API string.
+ */
+export function formatTypeLabel(type: string): string {
+  const raw = type.toLowerCase().trim()
+  if (TYPE_LABELS[raw]) return TYPE_LABELS[raw]
+  const underscored = raw.replace(/\s+/g, "_")
+  if (TYPE_LABELS[underscored]) return TYPE_LABELS[underscored]
+  return titleCase(raw)
+}
+
+/** Human label for an internal category id. */
+export function getCategoryLabel(category: CategoryId): string {
+  return CATEGORY_LABELS[category] ?? "Local Business"
+}
+
+/**
+ * De-duplicated, attractive category tags for display. Converts stored raw
+ * tags to labels, falls back to the category label when there are none.
+ */
+export function getPrettyTags(tags: string[], category: CategoryId, limit = 3): string[] {
+  const labels = tags.map(formatTypeLabel).filter(Boolean)
+  const unique: string[] = []
+  for (const label of labels) {
+    if (!unique.includes(label)) unique.push(label)
+    if (unique.length >= limit) break
+  }
+  if (unique.length === 0) unique.push(getCategoryLabel(category))
+  return unique
+}

@@ -2,6 +2,9 @@ import "server-only"
 
 import type { Business, OpeningHours } from "@/lib/types/business"
 import { mapGooglePlaceToBusiness, type GooglePlaceResult } from "@/lib/business/google-places"
+import { readCachedDetails } from "@/lib/business/google-details-cache"
+import { parseLegacyAddressComponents, type LegacyAddressComponent } from "@/lib/business/location"
+import type { GoogleDetails } from "@/lib/types/business"
 
 const TEXT_SEARCH_URL = "https://maps.googleapis.com/maps/api/place/textsearch/json"
 const DETAILS_URL = "https://maps.googleapis.com/maps/api/place/details/json"
@@ -146,6 +149,11 @@ export async function fetchLiveBusinessById(placeId: string): Promise<Business |
       "rating",
       "user_ratings_total",
       "formatted_address",
+      // Structured location. `address_component` is a Basic Data field and adds
+      // no incremental cost to this Details call (which already requests
+      // reviews/opening_hours), so the detail page gets an accurate area for
+      // free even before background enrichment runs.
+      "address_component",
       "types",
       "price_level",
       "geometry",
@@ -168,6 +176,7 @@ export async function fetchLiveBusinessById(placeId: string): Promise<Business |
       status?: string
       error_message?: string
       result?: GooglePlaceResult & {
+        address_components?: LegacyAddressComponent[]
         opening_hours?: { weekday_text?: string[]; open_now?: boolean }
         formatted_phone_number?: string
         website?: string
@@ -190,9 +199,45 @@ export async function fetchLiveBusinessById(placeId: string): Promise<Business |
     const result = payload.result
     const business = mapGooglePlaceToBusiness(result)
 
+    // Attach cached Google Place Details enrichment (amenities/editorial summary)
+    // for this venue. Pure cache read - never calls Place Details (New) here.
+    const cached = await readCachedDetails([placeId])
+    const cachedDetails = cached.get(placeId)
+
+    // Parse the structured address components this Details call returned (legacy
+    // Basic Data - no extra cost). Prefer the enrichment cache's location when
+    // it already resolved a specific area; otherwise use this live parse.
+    const liveLocation = parseLegacyAddressComponents(result.address_components, {
+      formattedAddress: result.formatted_address,
+      coordinates: business.location.coordinates,
+    })
+    const cachedHasArea = Boolean(
+      cachedDetails?.location?.neighbourhood || cachedDetails?.location?.sublocality,
+    )
+    const resolvedLocation = cachedHasArea ? cachedDetails!.location : liveLocation
+
+    const googleDetails: GoogleDetails | undefined =
+      cachedDetails || resolvedLocation
+        ? { ...(cachedDetails ?? {}), ...(resolvedLocation ? { location: resolvedLocation } : {}) }
+        : undefined
+
+    // Merge structured location into the base model WITHOUT touching existing
+    // coordinates (per requirement: never change map coordinates).
+    const mergedLocation = {
+      ...business.location,
+      address: resolvedLocation?.formattedAddress ?? business.location.address,
+      neighbourhood:
+        resolvedLocation?.neighbourhood ??
+        resolvedLocation?.sublocality ??
+        business.location.neighbourhood,
+      postcode: resolvedLocation?.postcode ?? business.location.postcode,
+    }
+
     // Layer on the detail-only fields the search endpoint doesn't return.
     return {
       ...business,
+      location: mergedLocation,
+      ...(googleDetails ? { googleDetails } : {}),
       openingHours: result.opening_hours?.weekday_text?.length
         ? parseWeekdayText(result.opening_hours.weekday_text)
         : business.openingHours,
@@ -235,7 +280,11 @@ export async function fetchLiveBusinesses(
   const cacheKey = queries.join("|")
   const cached = cache.get(cacheKey)
   if (cached && cached.expiresAt > Date.now()) {
-    return cached.businesses
+    // Re-attach enrichment on the cached path too. The Text Search cache stores
+    // only the raw venues; enrichment freshness is governed separately by the
+    // Supabase cache, so newly-enriched data appears without waiting for the
+    // Text Search cache to expire. This is a pure read - no Google Details call.
+    return attachCachedDetails(cached.businesses)
   }
 
   const settled = await Promise.all(queries.map((query) => searchOnce(query, apiKey)))
@@ -252,7 +301,38 @@ export async function fetchLiveBusinesses(
     (a, b) => (b.rating?.overall ?? 0) - (a.rating?.overall ?? 0),
   )
 
+  // Cache the RAW venues (without enrichment) so enrichment stays decoupled.
   cache.set(cacheKey, { businesses, expiresAt: Date.now() + CACHE_TTL_MS })
 
-  return businesses
+  // Attach any cached Google Place Details enrichment. This is a pure READ of
+  // the Supabase cache - it never calls Google, so the homepage stays on the
+  // cheap Text Search SKU. Businesses without cached enrichment are unchanged.
+  return attachCachedDetails(businesses)
+}
+
+/**
+ * Attach cached Google Place Details enrichment to live businesses by place id.
+ * Read-only and failure-tolerant: on any cache miss or error the businesses are
+ * returned exactly as they came in.
+ */
+async function attachCachedDetails(businesses: Business[]): Promise<Business[]> {
+  const placeIds = businesses
+    .map((b) => b.externalIds?.googlePlaceId ?? b.id)
+    .filter((id): id is string => Boolean(id))
+
+  if (placeIds.length === 0) return businesses
+
+  try {
+    const cached = await readCachedDetails(placeIds)
+    if (cached.size === 0) return businesses
+
+    return businesses.map((business) => {
+      const key = business.externalIds?.googlePlaceId ?? business.id
+      const details = key ? cached.get(key) : undefined
+      return details ? { ...business, googleDetails: details } : business
+    })
+  } catch (error) {
+    console.error("[v0] attachCachedDetails failed; serving un-enriched:", error)
+    return businesses
+  }
 }
