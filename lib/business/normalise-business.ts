@@ -47,6 +47,8 @@ export interface NormaliseBusinessInput {
   image?: string | null
   images?: string[] | null
   gallery?: GalleryImage[] | null
+  // Photo credits aligned by index with `images`.
+  attributions?: string[] | null
 
   // Rating: object (new) or number (legacy) plus optional review count
   rating?: number | Partial<Business["rating"]> | null
@@ -130,7 +132,10 @@ export function normaliseBusiness(
   const heroCandidate = mediaInput.hero ?? input.image ?? images[0]
   const hero = heroCandidate || PLACEHOLDER_IMAGE
   const resolvedImages = images.length > 0 ? images : [hero]
+  const attributions = toArray(mediaInput.attributions ?? input.attributions)
   const media: Business["media"] = { hero, images: resolvedImages, gallery }
+  // Only attach credits when at least one real attribution exists.
+  if (attributions.some((value) => Boolean(value))) media.attributions = attributions
 
   // ---- Provider ratings ----------------------------------------------------
   const pr = input.providerRatings ?? input.ratings ?? {}
@@ -234,6 +239,51 @@ export function getHeroImage(business: Business): string {
 export function getBusinessImages(business: Business): string[] {
   if (business.media.images.length > 0) return business.media.images
   return [getHeroImage(business)]
+}
+
+/** Maximum photos surfaced in the detail-page carousel/lightbox. */
+export const MAX_BUSINESS_PHOTOS = 10
+
+export interface BusinessPhoto {
+  url: string
+  attribution?: string
+}
+
+/**
+ * Ordered, de-duplicated photos for the detail page, capped at
+ * MAX_BUSINESS_PHOTOS. Prefers the real Google photo list already present on
+ * `media.images`, and falls back to the gallery (curated/Instagram sources) so
+ * curated records keep working. Never fabricates or repeats an image, and never
+ * pads the list to reach the cap.
+ */
+export function getBusinessPhotos(business: Business): BusinessPhoto[] {
+  const attributions = business.media.attributions ?? []
+  const seen = new Set<string>()
+  const photos: BusinessPhoto[] = []
+
+  const push = (url: string | undefined, attribution?: string) => {
+    if (!url || url === PLACEHOLDER_IMAGE) return
+    if (seen.has(url)) return
+    seen.add(url)
+    photos.push(attribution ? { url, attribution } : { url })
+  }
+
+  business.media.images.forEach((url, index) => push(url, attributions[index] || undefined))
+  // Gallery images (curated / Instagram) top up the list without duplicating.
+  business.media.gallery.forEach((image) => push(image.url, image.attribution))
+  push(business.media.hero)
+
+  return photos.slice(0, MAX_BUSINESS_PHOTOS)
+}
+
+/**
+ * Re-target a proxied Google photo URL at a different width so we only download
+ * the resolution a given slot actually needs. Non-proxy URLs pass through
+ * untouched.
+ */
+export function withPhotoWidth(url: string, width: number): string {
+  if (!url.startsWith("/api/place-photo")) return url
+  return url.replace(/([?&])w=\d+/, `$1w=${width}`)
 }
 
 /**

@@ -19,9 +19,14 @@ type LeafletType = typeof import("leaflet")
 
 interface MapViewProps {
   businesses: Business[]
+  /**
+   * Business id to open the map on, supplied by "Get Directions" on the detail
+   * page. When set, the map centres on that venue and opens its marker card.
+   */
+  focusBusinessId?: string | null
 }
 
-export function MapView({ businesses }: MapViewProps) {
+export function MapView({ businesses, focusBusinessId }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const mapInstance = useRef<L.Map | null>(null)
   const markersRef = useRef<L.Marker[]>([])
@@ -32,6 +37,14 @@ export function MapView({ businesses }: MapViewProps) {
   const [savedPlaces, setSavedPlaces] = useState<Set<string>>(new Set())
   const [showSavedPanel, setShowSavedPanel] = useState(false)
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
+  // Ensures the incoming "Get Directions" focus is applied once, so later
+  // interactions (selecting another marker) are never overridden.
+  const focusAppliedRef = useRef(false)
+
+  // A new focus target should be honoured even without a remount.
+  useEffect(() => {
+    focusAppliedRef.current = false
+  }, [focusBusinessId])
 
   // Toggle save
   const toggleSave = (businessId: string, e?: React.MouseEvent) => {

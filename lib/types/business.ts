@@ -17,6 +17,9 @@ export interface GalleryImage {
   source?: "instagram" | "google" | "curated"
   caption?: string
   featured?: boolean
+  // Plain-text photo credit. Google requires photo attributions to be shown
+  // wherever the photo appears, so this travels with the image itself.
+  attribution?: string
 }
 
 export interface BusinessReview {
@@ -132,6 +135,10 @@ export interface Business {
     hero?: string
     images: string[]
     gallery: GalleryImage[]
+    // Plain-text photo credits aligned BY INDEX with `images`. Optional and
+    // sparse - an entry is only present when Google supplied an attribution
+    // for that photo. Never fabricated.
+    attributions?: string[]
   }
 
   rating: {

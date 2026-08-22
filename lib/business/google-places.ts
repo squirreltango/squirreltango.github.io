@@ -14,8 +14,14 @@ export interface GooglePlaceResult {
   opening_hours?: { open_now?: boolean }
   geometry?: { location?: { lat?: number; lng?: number } }
   // Legacy Places photos include pixel dimensions, which we use to prefer a
-  // landscape hero image deterministically.
-  photos?: { photo_reference?: string; width?: number; height?: number }[]
+  // landscape hero image deterministically. `html_attributions` carries the
+  // photographer credit Google requires us to display.
+  photos?: {
+    photo_reference?: string
+    width?: number
+    height?: number
+    html_attributions?: string[]
+  }[]
 }
 
 /**
@@ -54,6 +60,23 @@ export function buildPlacePhotoUrl(photoReference: string, width = 800): string 
   return `/api/place-photo?ref=${encodeURIComponent(photoReference)}&w=${width}`
 }
 
+/**
+ * Convert Google's `html_attributions` (an anchor tag) into plain text so it can
+ * be rendered safely without `dangerouslySetInnerHTML`. Returns undefined when
+ * Google supplied no credit - we never invent one.
+ */
+export function toPlainAttribution(htmlAttributions?: string[]): string | undefined {
+  const raw = htmlAttributions?.[0]
+  if (!raw) return undefined
+  const text = raw
+    .replace(/<[^>]*>/g, "")
+    .replace(/&amp;/g, "&")
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/g, '"')
+    .trim()
+  return text || undefined
+}
+
 export function mapGooglePlaceToBusiness(
   place: GooglePlaceResult,
   source: BusinessSource = "google",
@@ -76,10 +99,11 @@ export function mapGooglePlaceToBusiness(
     heroIndex > 0
       ? [photoObjects[heroIndex], ...photoObjects.filter((_, i) => i !== heroIndex)]
       : photoObjects
-  const images = orderedPhotos
-    .map((photo) => photo.photo_reference)
-    .filter((ref): ref is string => Boolean(ref))
-    .map((ref) => buildPlacePhotoUrl(ref))
+  const usablePhotos = orderedPhotos.filter((photo) => Boolean(photo.photo_reference))
+  const images = usablePhotos.map((photo) => buildPlacePhotoUrl(photo.photo_reference as string))
+  // Credits stay aligned by index with `images` above.
+  const attributions = usablePhotos.map((photo) => toPlainAttribution(photo.html_attributions) ?? "")
+  const hasAnyAttribution = attributions.some(Boolean)
 
   return normaliseBusiness(
     {
@@ -99,6 +123,7 @@ export function mapGooglePlaceToBusiness(
           ? { lat: place.geometry.location.lat, lng: place.geometry.location.lng }
           : undefined,
       images: images.length > 0 ? images : undefined,
+      attributions: hasAnyAttribution ? attributions : undefined,
       priceLevel: place.price_level,
       openNow: typeof place.opening_hours?.open_now === "boolean" ? place.opening_hours.open_now : undefined,
       // Specific Google types double as lightweight, human-readable tags.
