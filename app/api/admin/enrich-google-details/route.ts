@@ -84,14 +84,24 @@ export async function POST(request: NextRequest) {
   // Live businesses come from Text Search (already in-process cached, so this
   // adds no Place Details cost). Each carries a Google place id.
   const live = await fetchLiveBusinesses()
-  const candidates = selectAcrossCategories(live, limit)
 
-  const placeIds = candidates
+  // Read the cache for the WHOLE dataset up front (one Supabase read, zero
+  // Google cost) so already-fresh records are excluded BEFORE `limit` is
+  // applied. Selecting first and filtering afterwards would make repeated runs
+  // re-pick the same leading `limit` businesses and never advance through the
+  // dataset.
+  const allPlaceIds = live
     .map((b) => b.externalIds?.googlePlaceId ?? b.id)
     .filter((id): id is string => Boolean(id))
+  const existing = await readCachedDetails(allPlaceIds)
 
   // Skip anything already fresh (<7 days) unless force is set.
-  const existing = await readCachedDetails(placeIds)
+  const eligible = force
+    ? live
+    : live.filter((b) => !isFresh(existing.get(b.externalIds?.googlePlaceId ?? b.id)))
+  const alreadyFresh = live.length - eligible.length
+
+  const candidates = selectAcrossCategories(eligible, limit)
 
   const report = {
     sku: SKU,
@@ -99,8 +109,12 @@ export async function POST(request: NextRequest) {
     fieldMask: getFieldMask(),
     dryRun,
     force,
+    // Whole-dataset progress, so multi-run enrichment is observable.
+    totalInDataset: live.length,
     checked: candidates.length,
-    skippedFresh: 0,
+    skippedFresh: alreadyFresh,
+    // Businesses still needing enrichment after this run completes.
+    remainingAfterThisRun: Math.max(eligible.length - candidates.length, 0),
     placeDetailsApiCalls: 0,
     enriched: 0,
     withAmenities: 0,
@@ -111,6 +125,9 @@ export async function POST(request: NextRequest) {
     durableWrites: 0,
     memoryOnlyWrites: 0,
     errors: [] as { name: string; placeId: string; error: string }[],
+    // Counts of each resolved neighbourhood in this run. Pure aggregation of
+    // what Google returned - never a fabricated or inferred area.
+    neighbourhoodBreakdown: {} as Record<string, number>,
     // Old (pre-enrichment) vs new (structured) location, so the operator can
     // confirm the improvement per venue.
     locationSamples: [] as { name: string; oldLocation: string; newLocation: string }[],
@@ -127,8 +144,9 @@ export async function POST(request: NextRequest) {
     const placeId = business.externalIds?.googlePlaceId ?? business.id
     if (!placeId) continue
 
+    // Defensive only: fresh records are already excluded from `eligible` above,
+    // so this does not double-count skippedFresh.
     if (!force && isFresh(existing.get(placeId))) {
-      report.skippedFresh += 1
       continue
     }
 
@@ -151,6 +169,12 @@ export async function POST(request: NextRequest) {
     const newLocation = result.displayLocation ?? oldLocation
     if (result.hasStructuredLocation) {
       report.withStructuredLocation += 1
+      const area =
+        result.googleDetails.location?.neighbourhood ??
+        result.googleDetails.location?.sublocality
+      if (area) {
+        report.neighbourhoodBreakdown[area] = (report.neighbourhoodBreakdown[area] ?? 0) + 1
+      }
       if (report.locationSamples.length < 20) {
         report.locationSamples.push({ name: business.name, oldLocation, newLocation })
       }
