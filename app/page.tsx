@@ -32,6 +32,17 @@ export default function HomePage() {
   const [aiSearchQuery, setAISearchQuery] = useState<string | null>(null)
   const [aiSearchResults, setAISearchResults] = useState<Business[] | null>(null)
   const [isSettingUp, setIsSettingUp] = useState(false)
+  // Business to open the map on, set by "Get Directions" on a detail page.
+  const [focusBusinessId, setFocusBusinessId] = useState<string | null>(null)
+
+  // Read the deep-link params once on mount. Using `window.location` rather
+  // than useSearchParams keeps this page free of a Suspense requirement.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const focus = params.get("focus")
+    if (params.get("view") === "map") setViewMode("map")
+    if (focus) setFocusBusinessId(focus)
+  }, [])
 
   // Fetch businesses from Supabase
   const { data: supabaseBusinesses, error, isLoading, mutate } = useSWR<Business[]>(
@@ -150,6 +161,15 @@ export default function HomePage() {
     return result
   }, [businesses, searchQuery, activeCategory, sortBy, filters, aiSearchResults])
 
+  // The map also needs the deep-linked venue, which active filters or a search
+  // term might otherwise exclude - without it there would be no marker to open.
+  const mapBusinesses = useMemo(() => {
+    if (!focusBusinessId) return filteredBusinesses
+    if (filteredBusinesses.some((b) => b.id === focusBusinessId)) return filteredBusinesses
+    const focused = businesses.find((b) => b.id === focusBusinessId)
+    return focused ? [focused, ...filteredBusinesses] : filteredBusinesses
+  }, [filteredBusinesses, businesses, focusBusinessId])
+
   return (
     <div className="min-h-screen bg-background">
       <Header
@@ -263,7 +283,7 @@ export default function HomePage() {
             ))}
           </div>
         ) : (
-          <MapView businesses={filteredBusinesses} />
+          <MapView businesses={mapBusinesses} focusBusinessId={focusBusinessId} />
         )}
 
         {filteredBusinesses.length === 0 && !isLoading && (

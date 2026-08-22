@@ -214,7 +214,14 @@ export function BusinessPhotoCarousel({ photos, businessName }: BusinessPhotoCar
 
       {/* Google photo credit for the visible slide. */}
       {current?.attribution && (
-        <span className="absolute bottom-4 right-5 sm:right-8 z-20 text-[11px] text-background/70 max-w-[60%] truncate text-right">
+        <span
+          className={cn(
+            // On mobile the content card overlaps the bottom of the hero, so the
+            // credit sits below the header actions instead of behind the card.
+            "absolute z-20 text-[11px] text-background/70 max-w-[55%] truncate text-right",
+            "top-20 right-5 sm:top-auto sm:bottom-4 sm:right-8",
+          )}
+        >
           Photo: {current.attribution}
         </span>
       )}

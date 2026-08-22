@@ -250,6 +250,20 @@ export function MapView({ businesses, focusBusinessId }: MapViewProps) {
     })
   }, [selectedBusiness?.id, hoveredBusiness?.id, mapReady, businesses, createCustomIcon])
 
+  // Apply an incoming "Get Directions" focus once the map and markers exist:
+  // centre on the venue and open its preview card. Only runs when the focused
+  // business actually has coordinates - nothing is invented.
+  useEffect(() => {
+    if (!mapReady || !focusBusinessId || focusAppliedRef.current) return
+    const target = businesses.find((b) => b.id === focusBusinessId)
+    const coords = target?.location.coordinates
+    if (!target || !coords) return
+
+    focusAppliedRef.current = true
+    mapInstance.current?.setView([coords.lat, coords.lng], 16, { animate: true })
+    setSelectedBusiness(target)
+  }, [mapReady, focusBusinessId, businesses])
+
   const handleRecenter = () => {
     const located = businesses.filter((b) => b.location.coordinates)
     if (mapInstance.current && leafletRef.current && located.length > 0) {
@@ -460,18 +474,37 @@ export function MapView({ businesses, focusBusinessId }: MapViewProps) {
               <span className="text-sm">{getLocationLabel(business)}</span>
           </div>
 
-          {/* Action Button */}
-          <Link
-            href={`/business/${business.id}`}
-            className={cn(
-              "flex items-center justify-center gap-2 w-full py-3 rounded-2xl",
-              "bg-foreground text-background text-sm font-medium",
-              "transition-all duration-300 hover:bg-foreground/90 hover:scale-[1.02] active:scale-[0.98]"
+          {/* Actions */}
+          <div className="flex items-center gap-2">
+            <Link
+              href={`/business/${business.id}`}
+              className={cn(
+                "flex flex-1 items-center justify-center gap-2 py-3 rounded-2xl",
+                "bg-foreground text-background text-sm font-medium",
+                "transition-all duration-300 hover:bg-foreground/90 hover:scale-[1.02] active:scale-[0.98]"
+              )}
+            >
+              <ExternalLink className="h-4 w-4" />
+              View details
+            </Link>
+            {/* Hands off to the user's own maps app for turn-by-turn routing. */}
+            {business.location.coordinates && (
+              <a
+                href={`https://www.google.com/maps/dir/?api=1&destination=${business.location.coordinates.lat},${business.location.coordinates.lng}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={`Get directions to ${business.name} in Google Maps`}
+                className={cn(
+                  "flex items-center justify-center gap-2 px-4 py-3 rounded-2xl",
+                  "border border-border/60 bg-card text-sm font-medium text-foreground",
+                  "transition-all duration-300 hover:bg-secondary/60 active:scale-[0.98]"
+                )}
+              >
+                <Navigation className="h-4 w-4" />
+                Directions
+              </a>
             )}
-          >
-            <ExternalLink className="h-4 w-4" />
-            View details
-          </Link>
+          </div>
         </div>
       </div>
     )
