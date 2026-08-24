@@ -58,7 +58,7 @@ VALUES
     '[{"url": "https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=800&h=600&fit=crop", "source": "instagram", "caption": "Morning vibes", "featured": true}]'::jsonb,
     '{"lat": 51.5255, "lng": -0.0839}'::jsonb,
     '£',
-    ARRAY['Coffee', 'Brunch', 'Instagrammable'],
+    ARRAY['Coffee', 'Brunch', 'Design-led'],
     '{"instagram": {"followers": 156000, "trending": true}, "google": {"rating": 4.4, "reviews": 987}, "foodHygiene": 5}'::jsonb
   ),
   (
@@ -133,7 +133,7 @@ VALUES
     '[{"url": "https://images.unsplash.com/photo-1470337458703-46ad1756a187?w=800&h=600&fit=crop", "source": "instagram", "caption": "Iconic pink room", "featured": true}]'::jsonb,
     '{"lat": 51.5127, "lng": -0.1419}'::jsonb,
     '££££',
-    ARRAY['Cocktails', 'Art', 'Instagrammable'],
+    ARRAY['Cocktails', 'Art', 'Design-led'],
     '{"instagram": {"followers": 412000, "trending": true}, "google": {"rating": 4.5, "reviews": 2876}, "foodHygiene": 5}'::jsonb
   ),
   (

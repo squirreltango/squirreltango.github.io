@@ -17,6 +17,12 @@ export interface GalleryImage {
   source?: "instagram" | "google" | "curated"
   caption?: string
   featured?: boolean
+  /**
+   * True only when a real integration confirmed this media genuinely came from
+   * the stated `source`. Required before an Instagram label is shown; existing
+   * `source: "instagram"` seed entries are Unsplash stock and leave this unset.
+   */
+  verified?: boolean
   // Plain-text photo credit. Google requires photo attributions to be shown
   // wherever the photo appears, so this travels with the image itself.
   attribution?: string
@@ -151,9 +157,30 @@ export interface Business {
       rating?: number
       reviews?: number
     }
+    // Instagram is NOT integrated yet. Everything here is gated in the UI by
+    // `hasVerifiedInstagramData` (lib/business/provenance.ts) and must never
+    // render under Instagram branding unless it genuinely came from Instagram.
     instagram?: {
       followers?: number
       trending?: boolean
+      /** Handle of the matched account, once an integration resolves one. */
+      username?: string
+      /**
+       * True ONLY when a real integration has matched this business to an
+       * Instagram account. Never inferred from follower count or any other
+       * heuristic - it must be written by the ingestion path itself.
+       */
+      verified?: boolean
+      /**
+       * Where these values came from:
+       * - "live"    - fetched from Instagram by a real integration
+       * - "curated" - entered by hand by our team, NOT from Instagram
+       * - "seed"    - legacy placeholder/mock data (the current state)
+       * Absent means unknown, which is treated as untrusted.
+       */
+      provenance?: "live" | "curated" | "seed"
+      /** ISO timestamp of the last successful live sync. */
+      lastSyncedAt?: string
     }
     foodHygiene?: number
     bookingCom?: number

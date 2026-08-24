@@ -15,6 +15,7 @@ import { AIPicks } from "@/components/ai-picks"
 import { AISearch } from "@/components/ai-search"
 import { Loader2, LayoutGrid, Map } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { isTrending } from "@/lib/business/provenance"
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json())
 
@@ -141,7 +142,9 @@ export default function HomePage() {
 
       const matchesCategory = activeCategory === "all" || business.category === activeCategory
 
-      const matchesTrending = !filters.trendingOnly || business.providerRatings.instagram?.trending === true
+      // Provider-neutral: reads LookMeUp's own `flags.trending`, never the
+      // Instagram-shaped field. Same results, no implied Instagram source.
+      const matchesTrending = !filters.trendingOnly || isTrending(business)
       const matchesFoodHygiene = filters.minFoodHygiene === null ||
         (business.providerRatings.foodHygiene !== undefined && business.providerRatings.foodHygiene >= filters.minFoodHygiene)
       const matchesBooking = !filters.hasBookingRating || business.providerRatings.bookingCom !== undefined

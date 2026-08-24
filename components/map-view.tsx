@@ -12,7 +12,7 @@ import {
   getLocationLabel,
 } from "@/lib/business/normalise-business"
 import { formatPriceLevel } from "@/lib/business/category-mapping"
-import { hasVerifiedInstagramData } from "@/lib/business/provenance"
+import { hasVerifiedInstagramData, isTrending } from "@/lib/business/provenance"
 import { cn } from "@/lib/utils"
 
 // Type for Leaflet - imported dynamically
@@ -532,8 +532,9 @@ export function MapView({ businesses, focusBusinessId }: MapViewProps) {
             </>
           )}
 
-          {/* Trending/Popular Badge */}
-          {business.providerRatings.instagram?.trending && (
+          {/* Trending badge - provider-neutral, driven by LookMeUp's own
+              `flags.trending` rather than the Instagram-shaped field. */}
+          {isTrending(business) && (
             <div className="absolute top-3 right-3 flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-pink-500/90 backdrop-blur-sm shadow-lg">
               <TrendingUp className="h-3 w-3 text-white" />
               <span className="text-xs font-semibold text-white">Trending</span>
