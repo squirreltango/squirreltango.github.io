@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { Star, MapPin, X, Navigation, Heart, ExternalLink, Instagram, ShieldCheck, Building2, TrendingUp, Bookmark, ChevronLeft, ChevronRight } from "lucide-react"
+import { Star, MapPin, X, Navigation, Heart, ExternalLink, Instagram, ShieldCheck, Building2, TrendingUp, Bookmark, ChevronLeft, ChevronRight, Loader2, Maximize2, Search } from "lucide-react"
 import type { Business } from "@/lib/types/business"
 import {
   getHeadlineRating,
@@ -29,7 +29,11 @@ interface MapViewProps {
 export function MapView({ businesses, focusBusinessId }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const mapInstance = useRef<L.Map | null>(null)
-  const markersRef = useRef<L.Marker[]>([])
+  // Keyed by business id so icon refreshes never depend on array ordering.
+  const markersRef = useRef<Map<string, L.Marker>>(new Map())
+  // Derived from the factory so it resolves through the module augmentation.
+  const clusterRef = useRef<ReturnType<LeafletType["markerClusterGroup"]> | null>(null)
+  const userMarkerRef = useRef<L.Marker | null>(null)
   const leafletRef = useRef<LeafletType | null>(null)
   const [selectedBusiness, setSelectedBusiness] = useState<Business | null>(null)
   const [hoveredBusiness, setHoveredBusiness] = useState<Business | null>(null)
@@ -37,6 +41,12 @@ export function MapView({ businesses, focusBusinessId }: MapViewProps) {
   const [savedPlaces, setSavedPlaces] = useState<Set<string>>(new Set())
   const [showSavedPanel, setShowSavedPanel] = useState(false)
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
+  const [locating, setLocating] = useState(false)
+  const [locationDenied, setLocationDenied] = useState(false)
+  // Shown once the user pans away from where the results were loaded. The
+  // button is intentionally inert until the bounds-search API is approved.
+  const [showSearchArea, setShowSearchArea] = useState(false)
   // Ensures the incoming "Get Directions" focus is applied once, so later
   // interactions (selecting another marker) are never overridden.
   const focusAppliedRef = useRef(false)
@@ -61,70 +71,94 @@ export function MapView({ businesses, focusBusinessId }: MapViewProps) {
     })
   }
 
-  // Create custom marker icon
-  const createCustomIcon = useCallback((L: LeafletType, business: Business, isSelected: boolean, isHovered: boolean) => {
-    const isTrending = business.providerRatings.instagram?.trending
-    const isActive = isSelected || isHovered
-    
+  /**
+   * Marker hierarchy, tuned to keep central London legible:
+   *   selected  - large dark "premium" pin, always on top
+   *   top rated - white pin carrying its real Google rating (>= 4.5 only)
+   *   saved     - small heart badge
+   *   default   - compact neutral pin, no price symbols (they caused the
+   *               heavy overlap in the old design)
+   * Ratings shown here are genuine Google values; nothing is invented.
+   */
+  const createCustomIcon = useCallback(
+    (L: LeafletType, business: Business, isSelected: boolean, isHovered: boolean, isSaved: boolean) => {
+      const isActive = isSelected || isHovered
+      const rating = business.providerRatings.google?.rating ?? getHeadlineRating(business)
+      const isTopRated = typeof rating === "number" && rating >= 4.5
+
+      const size = isSelected ? 42 : isActive ? 36 : 30
+      const bg = isActive ? "#191919" : "#ffffff"
+      const fg = isActive ? "#ffffff" : "#191919"
+      const ring = isActive ? "#191919" : "rgba(25,25,25,0.14)"
+      const shadow = isActive ? "0 10px 26px rgba(0,0,0,0.32)" : "0 3px 10px rgba(0,0,0,0.16)"
+
+      // Top-rated pins carry the score; everything else stays a quiet dot.
+      const label =
+        isTopRated || isSelected
+          ? `<span style="font-size:${isSelected ? 13 : 11}px;font-weight:700;letter-spacing:-0.2px;">${
+              typeof rating === "number" ? rating.toFixed(1) : ""
+            }</span>`
+          : `<span style="width:7px;height:7px;border-radius:50%;background:${fg};display:block;"></span>`
+
+      return L.divIcon({
+        className: "lmu-marker",
+        html: `
+          <div style="position:relative;display:flex;flex-direction:column;align-items:center;">
+            <div style="
+              width:${size}px;height:${size}px;border-radius:50%;
+              background:${bg};color:${fg};
+              border:2px solid ${ring};
+              box-shadow:${shadow};
+              display:flex;align-items:center;justify-content:center;
+              font-family:system-ui,-apple-system,sans-serif;
+              cursor:pointer;
+            ">${label}</div>
+            <div style="
+              width:8px;height:8px;background:${bg};
+              border-right:2px solid ${ring};border-bottom:2px solid ${ring};
+              transform:rotate(45deg);margin-top:-5px;
+            "></div>
+            ${
+              isSaved
+                ? `<div style="
+                     position:absolute;top:-3px;right:-3px;
+                     width:14px;height:14px;border-radius:50%;
+                     background:#ec4899;border:1.5px solid #fff;
+                     display:flex;align-items:center;justify-content:center;
+                   ">
+                     <svg width="8" height="8" viewBox="0 0 24 24" fill="#fff"><path d="M12 21s-8-4.9-8-10a4.7 4.7 0 0 1 8-3.3A4.7 4.7 0 0 1 20 11c0 5.1-8 10-8 10z"/></svg>
+                   </div>`
+                : ""
+            }
+          </div>
+        `,
+        iconSize: [size, size + 8],
+        iconAnchor: [size / 2, size + 8],
+      })
+    },
+    [],
+  )
+
+  /** Cluster bubble: "18 places" at wide zoom, scaled by density. */
+  const createClusterIcon = useCallback((L: LeafletType, count: number) => {
+    const size = count >= 50 ? 62 : count >= 20 ? 54 : count >= 10 ? 48 : 42
     return L.divIcon({
-      className: "custom-map-marker",
+      className: "lmu-cluster",
       html: `
         <div style="
-          position: relative;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          transition: transform 0.2s ease;
-          transform: ${isActive ? 'scale(1.15)' : 'scale(1)'};
-          z-index: ${isActive ? '1000' : '1'};
+          width:${size}px;height:${size}px;border-radius:50%;
+          background:#191919;color:#fff;
+          border:2.5px solid rgba(255,255,255,0.9);
+          box-shadow:0 8px 22px rgba(0,0,0,0.28);
+          display:flex;flex-direction:column;align-items:center;justify-content:center;
+          font-family:system-ui,-apple-system,sans-serif;line-height:1;
         ">
-          ${isTrending ? `
-            <div style="
-              position: absolute;
-              top: -6px;
-              left: 50%;
-              transform: translateX(-50%);
-              width: 48px;
-              height: 48px;
-              border-radius: 50%;
-              background: radial-gradient(circle, rgba(236,72,153,0.3) 0%, transparent 70%);
-              animation: pulse 2s infinite;
-            "></div>
-          ` : ''}
-          <div style="
-            background: ${isActive ? '#1a1a1a' : 'white'};
-            color: ${isActive ? 'white' : '#1a1a1a'};
-            border: 2px solid ${isActive ? '#1a1a1a' : '#e5e5e5'};
-            border-radius: 9999px;
-            padding: 8px 14px;
-            font-size: 13px;
-            font-weight: 600;
-            font-family: system-ui, -apple-system, sans-serif;
-            box-shadow: ${isActive ? '0 8px 24px rgba(0,0,0,0.25)' : '0 4px 12px rgba(0,0,0,0.1)'};
-            cursor: pointer;
-            white-space: nowrap;
-            transition: all 0.2s ease;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-          ">
-            ${isTrending ? `<span style="font-size: 10px;">🔥</span>` : ''}
-            ${formatPriceLevel(business.priceLevel)}
-          </div>
-          <div style="
-            width: 10px;
-            height: 10px;
-            background: ${isActive ? '#1a1a1a' : 'white'};
-            border-right: 2px solid ${isActive ? '#1a1a1a' : '#e5e5e5'};
-            border-bottom: 2px solid ${isActive ? '#1a1a1a' : '#e5e5e5'};
-            transform: rotate(45deg);
-            margin-top: -6px;
-            transition: all 0.2s ease;
-          "></div>
+          <span style="font-size:${count >= 100 ? 14 : 15}px;font-weight:700;">${count}</span>
+          <span style="font-size:8px;opacity:0.7;margin-top:2px;letter-spacing:0.3px;">PLACES</span>
         </div>
       `,
-      iconSize: [70, 50],
-      iconAnchor: [35, 50],
+      iconSize: [size, size],
+      iconAnchor: [size / 2, size / 2],
     })
   }, [])
 
@@ -135,9 +169,20 @@ export function MapView({ businesses, focusBusinessId }: MapViewProps) {
     let isMounted = true
 
     const initMap = async () => {
-      // Dynamically import Leaflet and CSS
-      const L = await import("leaflet")
+      // Dynamically import Leaflet and CSS.
+      const leafletModule = await import("leaflet")
       await import("leaflet/dist/leaflet.css")
+
+      // Use the default export, not the ESM namespace: the markercluster
+      // plugin attaches `markerClusterGroup` to that object, and namespace
+      // re-exports are static so the addition would be invisible there.
+      const L = ((leafletModule as unknown as { default?: LeafletType }).default ??
+        leafletModule) as LeafletType
+
+      // The plugin also expects a global L, so expose it before importing.
+      ;(window as unknown as { L: LeafletType }).L = L
+      await import("leaflet.markercluster")
+      await import("leaflet.markercluster/dist/MarkerCluster.css")
 
       if (!isMounted || !mapContainer.current) return
 
@@ -158,11 +203,20 @@ export function MapView({ businesses, focusBusinessId }: MapViewProps) {
         zoomControl: false,
       })
 
-      // Add tile layer (CARTO Light style for clean look)
-      L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+      // CARTO "Voyager" basemap: same free provider as before, but a warmer
+      // off-white canvas with genuine park greens, teal water, stronger road
+      // hierarchy and darker place labels. Keeps the premium editorial feel
+      // without the washed-out look of light_all.
+      L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-        maxZoom: 19,
+        maxZoom: 20,
       }).addTo(map)
+
+      // Dedicated pane so the user-location marker always sits above business
+      // pins and cluster bubbles.
+      map.createPane("userLocation")
+      const userPane = map.getPane("userLocation")
+      if (userPane) userPane.style.zIndex = "650"
 
       // Add zoom control to top right
       L.control.zoom({ position: "topright" }).addTo(map)
@@ -190,18 +244,38 @@ export function MapView({ businesses, focusBusinessId }: MapViewProps) {
     const L = leafletRef.current
     const map = mapInstance.current
 
-    // Clear existing markers
-    markersRef.current.forEach((marker) => marker.remove())
-    markersRef.current = []
+    // Rebuild the cluster group from scratch when the business set changes.
+    if (clusterRef.current) {
+      clusterRef.current.clearLayers()
+      map.removeLayer(clusterRef.current)
+      clusterRef.current = null
+    }
+    markersRef.current.clear()
 
     if (businesses.length === 0) return
 
-    // Add markers for each business that has coordinates
+    const cluster = L.markerClusterGroup({
+      // Clusters break apart as the user zooms in; individual pins from 16.
+      disableClusteringAtZoom: 16,
+      maxClusterRadius: 58,
+      spiderfyOnMaxZoom: false,
+      showCoverageOnHover: false,
+      zoomToBoundsOnClick: true,
+      chunkedLoading: true,
+      iconCreateFunction: (c) => createClusterIcon(L, c.getChildCount()),
+    })
+
     businesses.forEach((business) => {
       const coords = business.location.coordinates
       if (!coords) return
       const marker = L.marker([coords.lat, coords.lng], {
-        icon: createCustomIcon(L, business, selectedBusiness?.id === business.id, hoveredBusiness?.id === business.id),
+        icon: createCustomIcon(
+          L,
+          business,
+          selectedBusiness?.id === business.id,
+          hoveredBusiness?.id === business.id,
+          savedPlaces.has(business.id),
+        ),
       })
 
       marker.on("click", () => {
@@ -221,34 +295,42 @@ export function MapView({ businesses, focusBusinessId }: MapViewProps) {
         setHoveredBusiness(null)
       })
 
-      marker.addTo(map)
-      markersRef.current.push(marker)
+      cluster.addLayer(marker)
+      markersRef.current.set(business.id, marker)
     })
 
-    // Fit bounds to show all markers
-    const located = businesses.filter((b) => b.location.coordinates)
-    if (located.length > 0) {
-      const bounds = L.latLngBounds(
-        located.map((b) => [b.location.coordinates!.lat, b.location.coordinates!.lng] as [number, number])
-      )
-      map.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 })
-    }
-  }, [mapReady, businesses, createCustomIcon, selectedBusiness?.id, hoveredBusiness?.id])
+    cluster.addTo(map)
+    clusterRef.current = cluster
 
-  // Update marker icons when selection/hover changes
+    // Only auto-fit when we are not honouring an incoming focus request,
+    // otherwise the fit would fight the deep-linked centre.
+    if (!focusBusinessId && markersRef.current.size > 0) {
+      map.fitBounds(cluster.getBounds(), { padding: [50, 50], maxZoom: 14 })
+    }
+    // Icon appearance is refreshed by the effect below, so selection/hover are
+    // deliberately excluded here to avoid rebuilding every marker on hover.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapReady, businesses, createCustomIcon, createClusterIcon, focusBusinessId])
+
+  // Refresh only the icons affected by selection, hover or saved state.
   useEffect(() => {
     if (!mapReady || !leafletRef.current) return
-
     const L = leafletRef.current
 
-    const located = businesses.filter((b) => b.location.coordinates)
-    markersRef.current.forEach((marker, index) => {
-      const business = located[index]
-      if (business) {
-        marker.setIcon(createCustomIcon(L, business, selectedBusiness?.id === business.id, hoveredBusiness?.id === business.id))
-      }
+    businesses.forEach((business) => {
+      const marker = markersRef.current.get(business.id)
+      if (!marker) return
+      marker.setIcon(
+        createCustomIcon(
+          L,
+          business,
+          selectedBusiness?.id === business.id,
+          hoveredBusiness?.id === business.id,
+          savedPlaces.has(business.id),
+        ),
+      )
     })
-  }, [selectedBusiness?.id, hoveredBusiness?.id, mapReady, businesses, createCustomIcon])
+  }, [selectedBusiness?.id, hoveredBusiness?.id, savedPlaces, mapReady, businesses, createCustomIcon])
 
   // Apply an incoming "Get Directions" focus once the map and markers exist:
   // centre on the venue and open its preview card. Only runs when the focused
@@ -264,6 +346,83 @@ export function MapView({ businesses, focusBusinessId }: MapViewProps) {
     setSelectedBusiness(target)
   }, [mapReady, focusBusinessId, businesses])
 
+  /**
+   * Request browser geolocation, centre on the user and drop a distinct
+   * "You are here" marker. A denial is non-blocking: the rest of the map keeps
+   * working and the UI offers a manual starting point instead.
+   */
+  const handleLocate = useCallback(() => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setLocationDenied(true)
+      return
+    }
+    setLocating(true)
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const coords = { lat: position.coords.latitude, lng: position.coords.longitude }
+        setUserLocation(coords)
+        setLocationDenied(false)
+        setLocating(false)
+        mapInstance.current?.setView([coords.lat, coords.lng], 15, { animate: true })
+      },
+      () => {
+        // Covers denial, unavailable position and timeout alike.
+        setLocating(false)
+        setLocationDenied(true)
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
+    )
+  }, [])
+
+  // Render / move the "You are here" marker in its own pane.
+  useEffect(() => {
+    if (!mapReady || !leafletRef.current || !mapInstance.current) return
+    const L = leafletRef.current
+    const map = mapInstance.current
+
+    if (!userLocation) {
+      userMarkerRef.current?.remove()
+      userMarkerRef.current = null
+      return
+    }
+
+    const icon = L.divIcon({
+      className: "lmu-user-location",
+      html: `
+        <div style="position:relative;display:flex;align-items:center;justify-content:center;width:26px;height:26px;">
+          <span style="position:absolute;width:26px;height:26px;border-radius:50%;background:rgba(37,99,235,0.22);"></span>
+          <span style="position:absolute;width:13px;height:13px;border-radius:50%;background:#2563eb;border:2.5px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.3);"></span>
+        </div>
+      `,
+      iconSize: [26, 26],
+      iconAnchor: [13, 13],
+    })
+
+    if (userMarkerRef.current) {
+      userMarkerRef.current.setLatLng([userLocation.lat, userLocation.lng])
+      userMarkerRef.current.setIcon(icon)
+    } else {
+      userMarkerRef.current = L.marker([userLocation.lat, userLocation.lng], {
+        icon,
+        pane: "userLocation",
+        keyboard: false,
+      })
+        .addTo(map)
+        .bindTooltip("You are here", { direction: "top", offset: [0, -12] })
+    }
+  }, [userLocation, mapReady])
+
+  // Surface "Search this area" once the user pans away from the loaded results.
+  useEffect(() => {
+    if (!mapReady || !mapInstance.current) return
+    const map = mapInstance.current
+    const onMoveEnd = () => setShowSearchArea(true)
+    map.on("dragend", onMoveEnd)
+    return () => {
+      map.off("dragend", onMoveEnd)
+    }
+  }, [mapReady])
+
   const handleRecenter = () => {
     const located = businesses.filter((b) => b.location.coordinates)
     if (mapInstance.current && leafletRef.current && located.length > 0) {
@@ -272,6 +431,7 @@ export function MapView({ businesses, focusBusinessId }: MapViewProps) {
         located.map((b) => [b.location.coordinates!.lat, b.location.coordinates!.lng] as [number, number])
       )
       mapInstance.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 })
+      setShowSearchArea(false)
     }
   }
 
@@ -389,7 +549,18 @@ export function MapView({ businesses, focusBusinessId }: MapViewProps) {
               <h3 className="font-serif font-semibold text-lg text-foreground line-clamp-1 mb-1">
                 {business.name}
               </h3>
-              <p className="text-xs text-muted-foreground capitalize">{business.category}</p>
+              {/* Price moved off the markers to cut congestion - shown here instead. */}
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span className="capitalize">{business.category}</span>
+                {formatPriceLevel(business.priceLevel) && (
+                  <>
+                    <span aria-hidden="true">&middot;</span>
+                    <span className="font-medium text-foreground">
+                      {formatPriceLevel(business.priceLevel)}
+                    </span>
+                  </>
+                )}
+              </div>
             </div>
             <button
               onClick={(e) => toggleSave(business.id, e)}
@@ -527,18 +698,41 @@ export function MapView({ businesses, focusBusinessId }: MapViewProps) {
 
       {/* Top Controls */}
       <div className="absolute top-4 left-4 z-[1000] flex items-center gap-3">
-        {/* Recenter Button */}
+        {/* Current location - requests browser geolocation */}
+        <button
+          onClick={handleLocate}
+          disabled={locating}
+          aria-label="Show my current location"
+          className={cn(
+            "w-11 h-11 rounded-2xl bg-card border border-border/60 shadow-lg",
+            "flex items-center justify-center text-foreground",
+            "transition-all duration-300",
+            "hover:bg-secondary/80 hover:scale-110 hover:shadow-xl active:scale-95",
+            "disabled:opacity-60 disabled:hover:scale-100",
+            userLocation && "bg-foreground text-background hover:bg-foreground/90"
+          )}
+          title={userLocation ? "Centre on my location" : "Use my current location"}
+        >
+          {locating ? (
+            <Loader2 className="h-5 w-5 animate-spin" />
+          ) : (
+            <Navigation className={cn("h-5 w-5", userLocation && "fill-current")} />
+          )}
+        </button>
+
+        {/* Fit all businesses back into view */}
         <button
           onClick={handleRecenter}
+          aria-label="Fit all places into view"
           className={cn(
             "w-11 h-11 rounded-2xl bg-card border border-border/60 shadow-lg",
             "flex items-center justify-center text-foreground",
             "transition-all duration-300",
             "hover:bg-secondary/80 hover:scale-110 hover:shadow-xl active:scale-95"
           )}
-          title="Recenter map"
+          title="Fit all places"
         >
-          <Navigation className="h-5 w-5" />
+          <Maximize2 className="h-[18px] w-[18px]" />
         </button>
 
         {/* Saved Places Button */}
@@ -563,6 +757,58 @@ export function MapView({ businesses, focusBusinessId }: MapViewProps) {
           )}
         </button>
       </div>
+
+      {/* "Search this area" - UI only for now. Wiring this to a bounds-based
+          Places request would add per-pan Google cost, so it stays inert until
+          that spend is approved. Never fires automatically on map movement. */}
+      {showSearchArea && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000]">
+          <button
+            type="button"
+            disabled
+            title="Coming soon - searching new areas needs Places API approval"
+            className={cn(
+              "flex items-center gap-2 px-4 h-10 rounded-2xl",
+              "bg-card/95 backdrop-blur-md border border-border/60 shadow-lg",
+              "text-sm font-medium text-muted-foreground cursor-not-allowed"
+            )}
+          >
+            <Search className="h-4 w-4" />
+            Search this area
+            <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded-md bg-secondary/80">
+              Soon
+            </span>
+          </button>
+        </div>
+      )}
+
+      {/* Geolocation denial is non-blocking - the map stays fully usable. */}
+      {locationDenied && (
+        <div
+          role="status"
+          className={cn(
+            "absolute top-[4.75rem] left-4 z-[1000] max-w-xs",
+            "flex items-start gap-2.5 px-4 py-3 rounded-2xl",
+            "bg-card/95 backdrop-blur-md border border-border/60 shadow-lg"
+          )}
+        >
+          <MapPin className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
+          <div className="text-xs leading-relaxed">
+            <p className="font-semibold text-foreground">Location unavailable</p>
+            <p className="text-muted-foreground">
+              Enable location access in your browser, or pick a starting point manually when you
+              request directions.
+            </p>
+          </div>
+          <button
+            onClick={() => setLocationDenied(false)}
+            aria-label="Dismiss location message"
+            className="ml-1 shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Saved Places Panel */}
       {showSavedPanel && (

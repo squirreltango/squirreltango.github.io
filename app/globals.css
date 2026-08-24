@@ -251,3 +251,53 @@
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
+
+/* ---------------------------------------------------------------
+   LookMeUp map
+   The tile filter is applied to the tile pane only, so basemap
+   colour is lifted (greens, water, road contrast) while markers,
+   clusters and controls stay exactly on-brand.
+   --------------------------------------------------------------- */
+.leaflet-container {
+  /* Warm off-white showing through while tiles load. */
+  background: #f5f2ec;
+  font-family: inherit;
+}
+
+.leaflet-tile-pane {
+  filter: saturate(1.3) contrast(1.06) brightness(1.01);
+}
+
+/* Custom divIcons must not inherit any default chrome. */
+.lmu-marker,
+.lmu-cluster,
+.lmu-user-location {
+  background: transparent;
+  border: none;
+}
+
+.lmu-marker,
+.lmu-cluster {
+  transition: transform 0.18s ease;
+}
+
+.lmu-marker:hover,
+.lmu-cluster:hover {
+  transform: scale(1.08);
+  z-index: 1000;
+}
+
+/* Keep place labels legible against the lifted basemap. */
+.leaflet-container .leaflet-control-attribution {
+  background: rgba(255, 255, 255, 0.82);
+  font-size: 10px;
+}
+
+.leaflet-container .leaflet-tooltip {
+  border: none;
+  border-radius: 10px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+}
