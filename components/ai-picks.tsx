@@ -22,7 +22,7 @@ export function AIPicks({ businesses }: AIPicksProps) {
   // Select AI picks based on criteria:
   // - High Google rating (4.5+)
   // - Strong food hygiene (4+)
-  // - Trending on Instagram
+  // - Trending (ranking input only; not surfaced as an Instagram claim)
   const aiPicks = useMemo(() => {
     const scored = businesses.map((business) => {
       let score = 0

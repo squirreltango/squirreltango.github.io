@@ -12,6 +12,7 @@ import {
   getLocationLabel,
 } from "@/lib/business/normalise-business"
 import { formatPriceLevel } from "@/lib/business/category-mapping"
+import { hasVerifiedInstagramData } from "@/lib/business/provenance"
 import { cn } from "@/lib/utils"
 
 // Type for Leaflet - imported dynamically
@@ -478,11 +479,10 @@ export function MapView({ businesses, focusBusinessId }: MapViewProps) {
           />
           <div className="absolute inset-0 bg-gradient-to-t from-foreground/30 via-transparent to-transparent" />
           
-          {/* Instagram Badge */}
-          <div className="absolute top-3 left-3 flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-card/90 backdrop-blur-sm shadow-lg">
-            <Instagram className="h-3.5 w-3.5 text-pink-500" />
-            <span className="text-xs font-medium text-foreground">From Instagram</span>
-          </div>
+          {/* No provenance badge here. These photos come from Google Places
+              (media.images), never Instagram, and Google's photo attribution
+              is credited on the detail page where there is room to show it
+              properly. A badge on this small preview would be inaccurate. */}
 
           {/* Image Navigation */}
           {images.length > 1 && (
@@ -601,10 +601,11 @@ export function MapView({ businesses, focusBusinessId }: MapViewProps) {
               )
             })()}
 
-            {/* Instagram Followers */}
-            {business.providerRatings.instagram?.followers !== undefined && (
-              <div className="flex items-center gap-2 p-2 rounded-xl bg-secondary/40">
-                <Instagram className="h-4 w-4 text-pink-500 shrink-0" />
+              {/* Instagram followers - hidden until a verified Instagram
+                  integration genuinely supplies this number. */}
+              {hasVerifiedInstagramData(business) && business.providerRatings.instagram?.followers !== undefined && (
+                <div className="flex items-center gap-2 p-2 rounded-xl bg-secondary/40">
+                  <Instagram className="h-4 w-4 text-pink-500 shrink-0" />
                 <span className="text-sm font-medium text-foreground">
                   {(business.providerRatings.instagram.followers / 1000).toFixed(0)}K
                 </span>

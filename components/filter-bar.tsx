@@ -262,7 +262,9 @@ export function FilterBar({
                 >
                   <span className="flex items-center gap-2">
                     <TrendingUp className={cn("h-4 w-4", filters.trendingOnly ? "text-background" : "text-pink-500")} />
-                    Trending on Instagram
+                    {/* Not attributed to Instagram: the underlying flag is not
+                        sourced from Instagram. Filter behaviour is unchanged. */}
+                    Trending now
                   </span>
                   {filters.trendingOnly && <Check className="h-4 w-4" />}
                 </button>
