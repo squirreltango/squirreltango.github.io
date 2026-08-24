@@ -13,7 +13,8 @@ import { getHeadlineRating, getLocationLabel } from "@/lib/business/normalise-bu
 import { FilterBar, type SortOption, type FilterOptions } from "@/components/filter-bar"
 import { AIPicks } from "@/components/ai-picks"
 import { AISearch } from "@/components/ai-search"
-import { Loader2 } from "lucide-react"
+import { Loader2, LayoutGrid, Map } from "lucide-react"
+import { cn } from "@/lib/utils"
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json())
 
@@ -244,9 +245,9 @@ export default function HomePage() {
         </div>
 
         {/* Results Header */}
-        <div className="flex items-center justify-between mb-8 pb-6 border-b border-border/60">
-          <div>
-            <p className="text-sm text-muted-foreground">
+        <div className="flex items-center justify-between gap-3 mb-8 pb-6 border-b border-border/60">
+          <div className="min-w-0">
+            <p className="text-sm text-muted-foreground truncate">
               Showing <span className="font-semibold text-foreground">{filteredBusinesses.length}</span>{" "}
               {filteredBusinesses.length === 1 ? "place" : "places"}
               {activeFilterCount > 0 && (
@@ -256,7 +257,40 @@ export default function HomePage() {
               )}
             </p>
           </div>
-          <div className="text-sm text-muted-foreground">
+
+          {/* Mobile: primary List | Map switch. Sits in the space the sort
+              caption uses on desktop, so it costs no extra vertical height.
+              Drives the same `viewMode` state as the header - no duplicate
+              state and the ?view=map deep link keeps working. */}
+          <div
+            role="group"
+            aria-label="Choose results view"
+            className="md:hidden flex shrink-0 items-center gap-1 p-1 rounded-full bg-secondary/70 border border-border/60"
+          >
+            {([
+              { mode: "list" as const, label: "List", Icon: LayoutGrid },
+              { mode: "map" as const, label: "Map", Icon: Map },
+            ]).map(({ mode, label, Icon }) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setViewMode(mode)}
+                aria-pressed={viewMode === mode}
+                className={cn(
+                  "flex items-center gap-1.5 h-9 px-3.5 rounded-full text-xs font-medium",
+                  "transition-all duration-300",
+                  viewMode === mode
+                    ? "bg-card text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <Icon className="h-4 w-4" />
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <div className="hidden md:block text-sm text-muted-foreground">
             {sortBy === "relevance" && "Sorted by relevance"}
             {sortBy === "google_rating" && "Sorted by Google rating"}
             {sortBy === "instagram_followers" && "Sorted by popularity"}
