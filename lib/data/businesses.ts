@@ -131,7 +131,10 @@ const CURATED: NormaliseBusinessInput[] = [
     ],
     coordinates: { lat: 51.5255, lng: -0.0839 },
     priceLevel: "£",
-    tags: ["Coffee", "Brunch", "Instagrammable"],
+    // "Instagrammable" removed: Instagram is not integrated, so the label
+    // implied a validation we cannot make. "Design-led" is supportable from
+    // this venue's own description ("stylish industrial space").
+    tags: ["Coffee", "Brunch", "Design-led"],
     ratings: {
       instagram: { followers: 156000, trending: true },
       google: { rating: 4.4, reviews: 987 },
@@ -295,7 +298,9 @@ const CURATED: NormaliseBusinessInput[] = [
     ],
     coordinates: { lat: 51.5127, lng: -0.1419 },
     priceLevel: "££££",
-    tags: ["Cocktails", "Art", "Instagrammable"],
+    // "Instagrammable" removed for the same reason. "Design-led" is supported
+    // by this venue's existing "Art" tag and its themed-rooms description.
+    tags: ["Cocktails", "Art", "Design-led"],
     ratings: {
       instagram: { followers: 412000, trending: true },
       google: { rating: 4.5, reviews: 2876 },

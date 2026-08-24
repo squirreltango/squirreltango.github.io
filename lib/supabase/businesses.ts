@@ -71,9 +71,17 @@ export function mapSupabaseRowToBusiness(row: BusinessRow): Business {
     }
   }
   if (typeof row.instagram_followers === "number" || typeof row.instagram_trending === "boolean") {
+    // These two flat columns exist only because the original seed script wrote
+    // them; there is no Instagram ingestion writing to them. Tag them as
+    // "seed" and leave `verified` false so `hasVerifiedInstagramData` can
+    // never surface them under Instagram branding. When a real integration
+    // lands it should write its own verified columns rather than these, so
+    // marking them here cannot overwrite future live data.
     flatProviderRatings.instagram = {
       followers: row.instagram_followers ?? undefined,
       trending: row.instagram_trending ?? undefined,
+      verified: false,
+      provenance: "seed" as const,
     }
   }
   if (typeof row.food_hygiene === "number") flatProviderRatings.foodHygiene = row.food_hygiene

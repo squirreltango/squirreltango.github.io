@@ -2,12 +2,12 @@
 
 import { use, useState } from "react"
 import useSWR from "swr"
-import Image from "next/image"
 import Link from "next/link"
-import { ArrowLeft, Star, MapPin, Heart, Share2, Clock, Phone, Globe, ChevronRight, Instagram, ShieldCheck, Building2, TrendingUp, ExternalLink, Loader2 } from "lucide-react"
+import { ArrowLeft, Star, MapPin, Heart, Share2, Instagram, ShieldCheck, Building2, TrendingUp, ExternalLink, Loader2 } from "lucide-react"
 import { businesses as mockBusinesses } from "@/lib/data"
 import type { Business } from "@/lib/types/business"
 import {
+  getBusinessPhotos,
   getHeroImage,
   getHeadlineRating,
   getHeadlineReviewCount,
@@ -17,6 +17,9 @@ import { formatPriceLevel } from "@/lib/business/category-mapping"
 import { getBusinessFullAddress } from "@/lib/business/location"
 import { getAmenityChips } from "@/lib/business/amenities"
 import { PhotoGallery } from "@/components/photo-gallery"
+import { hasVerifiedInstagramData } from "@/lib/business/provenance"
+import { BusinessPhotoCarousel } from "@/components/business-photo-carousel"
+import { BusinessInfoRows } from "@/components/business-info-rows"
 import { cn } from "@/lib/utils"
 import { notFound } from "next/navigation"
 
@@ -49,19 +52,6 @@ const fallbackReviews: BusinessReview[] = [
   },
 ]
 
-const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
-
-// Produce a short human-readable summary of a business's opening hours.
-function describeHours(business: Business): string {
-  const today = business.openingHours?.find((h) => h.day === new Date().getDay())
-  if (today) {
-    if (today.closed) return `Closed today (${DAY_NAMES[today.day]})`
-    if (today.open && today.close) return `Open today - ${today.open} to ${today.close}`
-  }
-  if (business.openingHours && business.openingHours.length > 0) return "See opening hours"
-  return "Hours not available"
-}
-
 export default function BusinessDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const [isSaved, setIsSaved] = useState(false)
@@ -73,9 +63,14 @@ export default function BusinessDetailPage({ params }: { params: Promise<{ id: s
     { revalidateOnFocus: false }
   )
 
-  // Fallback to mock data if Supabase returns nothing
+  // Fallback to mock data if Supabase returns nothing. The API responds with
+  // an `{ error }` object for non-UUID ids (all curated mock ids), and that
+  // object is truthy - so require a real business shape before trusting it,
+  // otherwise the fallback is skipped and `business.media` blows up.
   const mockBusiness = mockBusinesses.find((b) => b.id === id)
-  const business = supabaseBusiness || mockBusiness
+  const isBusinessShape = (value: unknown): value is Business =>
+    typeof value === "object" && value !== null && "media" in value
+  const business = isBusinessShape(supabaseBusiness) ? supabaseBusiness : mockBusiness
 
   if (!isLoading && !business) {
     notFound()
@@ -99,22 +94,20 @@ export default function BusinessDetailPage({ params }: { params: Promise<{ id: s
 
   const displayReviews = business.reviews && business.reviews.length > 0 ? business.reviews : fallbackReviews
 
+  // Real Google photos for this place (deduplicated, capped at 10). Falls back
+  // to the single hero so the header never renders empty.
+  const realPhotos = getBusinessPhotos(business)
+  const photos = realPhotos.length > 0 ? realPhotos : [{ url: getHeroImage(business) }]
+
   return (
     <div className="min-h-screen bg-background">
-      {/* Header Image */}
+      {/* Header image carousel - real Google Places photos for this venue */}
       <div className="relative h-72 sm:h-96 md:h-[28rem] overflow-hidden">
-        <Image
-          src={getHeroImage(business) || "/placeholder.svg"}
-          alt={business.name}
-          fill
-          className="object-cover"
-          priority
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-foreground/70 via-foreground/20 to-transparent" />
+        <BusinessPhotoCarousel photos={photos} businessName={business.name} />
 
         {/* Navigation */}
         <div 
-          className="absolute top-0 left-0 right-0 p-5 flex items-center justify-between"
+          className="absolute top-0 left-0 right-0 p-5 flex items-center justify-between z-20"
           style={{ animation: 'fadeInUp 0.5s ease-out' }}
         >
           <Link
@@ -278,8 +271,12 @@ export default function BusinessDetailPage({ params }: { params: Promise<{ id: s
             >
               <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4">Ratings Breakdown</h3>
               <div className="grid grid-cols-2 gap-3">
-                {/* Instagram */}
-                {business.providerRatings.instagram?.followers !== undefined && (
+                {/* Instagram - suppressed until a verified Instagram
+                    integration supplies these figures. The follower counts
+                    currently in the data are hand-authored seed values, so
+                    presenting them under Instagram branding would attribute
+                    numbers to a provider we have not integrated. */}
+                {hasVerifiedInstagramData(business) && business.providerRatings.instagram?.followers !== undefined && (
                   <div className={cn(
                     "flex flex-col gap-2 p-4 rounded-2xl bg-secondary/40 border border-border/30",
                     "transition-all duration-300 hover:bg-secondary/60 hover:border-border/50"
@@ -513,51 +510,28 @@ export default function BusinessDetailPage({ params }: { params: Promise<{ id: s
                 <Heart className={cn("h-5 w-5 transition-transform duration-300", isSaved && "fill-current scale-110")} />
                 {isSaved ? "Saved" : "Save"}
               </button>
-              <button className={cn(
-                "flex items-center justify-center gap-2.5 py-4 rounded-2xl",
-                "bg-foreground text-background font-semibold",
-                "shadow-lg shadow-foreground/10",
-                "transition-all duration-300",
-                "hover:bg-foreground/90 hover:shadow-xl hover:shadow-foreground/15 hover:scale-[1.02]",
-                "active:scale-[0.98]"
-              )}>
+              {/* Keeps the user inside LookMeUp: opens the existing Map View
+                  with this business already selected and centred. */}
+              <Link
+                href={`/?view=map&focus=${encodeURIComponent(business.id)}`}
+                className={cn(
+                  "flex items-center justify-center gap-2.5 py-4 rounded-2xl",
+                  "bg-foreground text-background font-semibold",
+                  "shadow-lg shadow-foreground/10",
+                  "transition-all duration-300",
+                  "hover:bg-foreground/90 hover:shadow-xl hover:shadow-foreground/15 hover:scale-[1.02]",
+                  "active:scale-[0.98]"
+                )}
+              >
                 <MapPin className="h-5 w-5" />
                 Get Directions
-              </button>
+              </Link>
             </div>
           </div>
 
-          {/* Details */}
-          <div className="border-t border-border/60">
-            <div className="divide-y divide-border/60">
-              {[
-                { icon: Clock, label: "Opening Hours", value: describeHours(business) },
-                { icon: Phone, label: "Contact", value: business.contact?.phone || "Not available" },
-                { icon: Globe, label: "Website", value: business.contact?.website || "Not available" },
-              ].map((item, index) => (
-                <div 
-                  key={item.label}
-                  className={cn(
-                    "flex items-center gap-5 p-5 sm:p-6 cursor-pointer group",
-                    "transition-all duration-300 hover:bg-secondary/30"
-                  )}
-                  style={{ animation: `fadeInUp 0.4s ease-out ${0.4 + index * 0.05}s forwards`, opacity: 0 }}
-                >
-                  <div className={cn(
-                    "w-12 h-12 rounded-2xl bg-secondary/80 flex items-center justify-center",
-                    "transition-all duration-300 group-hover:bg-secondary group-hover:scale-105"
-                  )}>
-                    <item.icon className="h-5 w-5 text-muted-foreground transition-colors duration-300 group-hover:text-foreground" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-semibold text-foreground">{item.label}</p>
-                    <p className="text-sm text-muted-foreground">{item.value}</p>
-                  </div>
-                  <ChevronRight className="h-5 w-5 text-muted-foreground transition-all duration-300 group-hover:translate-x-1 group-hover:text-foreground" />
-                </div>
-              ))}
-            </div>
-          </div>
+          {/* Details - opening hours, contact and website as real controls.
+              Rows with no genuine Google data are hidden entirely. */}
+          <BusinessInfoRows business={business} />
         </div>
 
         {/* Photo Gallery Section */}

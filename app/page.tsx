@@ -13,7 +13,9 @@ import { getHeadlineRating, getLocationLabel } from "@/lib/business/normalise-bu
 import { FilterBar, type SortOption, type FilterOptions } from "@/components/filter-bar"
 import { AIPicks } from "@/components/ai-picks"
 import { AISearch } from "@/components/ai-search"
-import { Loader2 } from "lucide-react"
+import { Loader2, LayoutGrid, Map } from "lucide-react"
+import { cn } from "@/lib/utils"
+import { isTrending } from "@/lib/business/provenance"
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json())
 
@@ -32,6 +34,17 @@ export default function HomePage() {
   const [aiSearchQuery, setAISearchQuery] = useState<string | null>(null)
   const [aiSearchResults, setAISearchResults] = useState<Business[] | null>(null)
   const [isSettingUp, setIsSettingUp] = useState(false)
+  // Business to open the map on, set by "Get Directions" on a detail page.
+  const [focusBusinessId, setFocusBusinessId] = useState<string | null>(null)
+
+  // Read the deep-link params once on mount. Using `window.location` rather
+  // than useSearchParams keeps this page free of a Suspense requirement.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const focus = params.get("focus")
+    if (params.get("view") === "map") setViewMode("map")
+    if (focus) setFocusBusinessId(focus)
+  }, [])
 
   // Fetch businesses from Supabase
   const { data: supabaseBusinesses, error, isLoading, mutate } = useSWR<Business[]>(
@@ -129,7 +142,9 @@ export default function HomePage() {
 
       const matchesCategory = activeCategory === "all" || business.category === activeCategory
 
-      const matchesTrending = !filters.trendingOnly || business.providerRatings.instagram?.trending === true
+      // Provider-neutral: reads LookMeUp's own `flags.trending`, never the
+      // Instagram-shaped field. Same results, no implied Instagram source.
+      const matchesTrending = !filters.trendingOnly || isTrending(business)
       const matchesFoodHygiene = filters.minFoodHygiene === null ||
         (business.providerRatings.foodHygiene !== undefined && business.providerRatings.foodHygiene >= filters.minFoodHygiene)
       const matchesBooking = !filters.hasBookingRating || business.providerRatings.bookingCom !== undefined
@@ -149,6 +164,15 @@ export default function HomePage() {
 
     return result
   }, [businesses, searchQuery, activeCategory, sortBy, filters, aiSearchResults])
+
+  // The map also needs the deep-linked venue, which active filters or a search
+  // term might otherwise exclude - without it there would be no marker to open.
+  const mapBusinesses = useMemo(() => {
+    if (!focusBusinessId) return filteredBusinesses
+    if (filteredBusinesses.some((b) => b.id === focusBusinessId)) return filteredBusinesses
+    const focused = businesses.find((b) => b.id === focusBusinessId)
+    return focused ? [focused, ...filteredBusinesses] : filteredBusinesses
+  }, [filteredBusinesses, businesses, focusBusinessId])
 
   return (
     <div className="min-h-screen bg-background">
@@ -224,9 +248,9 @@ export default function HomePage() {
         </div>
 
         {/* Results Header */}
-        <div className="flex items-center justify-between mb-8 pb-6 border-b border-border/60">
-          <div>
-            <p className="text-sm text-muted-foreground">
+        <div className="flex items-center justify-between gap-3 mb-8 pb-6 border-b border-border/60">
+          <div className="min-w-0">
+            <p className="text-sm text-muted-foreground truncate">
               Showing <span className="font-semibold text-foreground">{filteredBusinesses.length}</span>{" "}
               {filteredBusinesses.length === 1 ? "place" : "places"}
               {activeFilterCount > 0 && (
@@ -236,7 +260,40 @@ export default function HomePage() {
               )}
             </p>
           </div>
-          <div className="text-sm text-muted-foreground">
+
+          {/* Mobile: primary List | Map switch. Sits in the space the sort
+              caption uses on desktop, so it costs no extra vertical height.
+              Drives the same `viewMode` state as the header - no duplicate
+              state and the ?view=map deep link keeps working. */}
+          <div
+            role="group"
+            aria-label="Choose results view"
+            className="md:hidden flex shrink-0 items-center gap-1 p-1 rounded-full bg-secondary/70 border border-border/60"
+          >
+            {([
+              { mode: "list" as const, label: "List", Icon: LayoutGrid },
+              { mode: "map" as const, label: "Map", Icon: Map },
+            ]).map(({ mode, label, Icon }) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setViewMode(mode)}
+                aria-pressed={viewMode === mode}
+                className={cn(
+                  "flex items-center gap-1.5 h-9 px-3.5 rounded-full text-xs font-medium",
+                  "transition-all duration-300",
+                  viewMode === mode
+                    ? "bg-card text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <Icon className="h-4 w-4" />
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <div className="hidden md:block text-sm text-muted-foreground">
             {sortBy === "relevance" && "Sorted by relevance"}
             {sortBy === "google_rating" && "Sorted by Google rating"}
             {sortBy === "instagram_followers" && "Sorted by popularity"}
@@ -263,7 +320,7 @@ export default function HomePage() {
             ))}
           </div>
         ) : (
-          <MapView businesses={filteredBusinesses} />
+          <MapView businesses={mapBusinesses} focusBusinessId={focusBusinessId} />
         )}
 
         {filteredBusinesses.length === 0 && !isLoading && (

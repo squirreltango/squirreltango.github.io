@@ -19,6 +19,7 @@ import {
   type InsightTone,
 } from "@/lib/business/google-insights"
 import { getTopAmenityChips } from "@/lib/business/amenities"
+import { hasVerifiedInstagramData, isTrending } from "@/lib/business/provenance"
 import { cn } from "@/lib/utils"
 
 interface BusinessCardProps {
@@ -63,8 +64,8 @@ function extractKeywords(query: string | null | undefined): string[] {
 type BadgeVariant = 'match' | InsightTone | 'trending'
 
 // Pick the ONE primary hero badge for the card. Search relevance wins while the
-// user is searching; otherwise we fall back to genuine signals - a real
-// Instagram trend, then a derived insight from live Google data.
+// user is searching; otherwise we fall back to a trending signal, then a
+// derived insight from live Google data.
 function getPrimaryBadge(
   business: Business,
   searchQuery: string | null | undefined,
@@ -85,8 +86,9 @@ function getPrimaryBadge(
     }
   }
 
-  // 2. A genuine social trend signal (curated/Instagram data only).
-  if (business.providerRatings.instagram?.trending) {
+  // 2. A trending signal. Deliberately labelled "Trending now" with no
+  //    provider attribution, since this flag is not sourced from Instagram.
+  if (isTrending(business)) {
     return { label: 'Trending now', variant: 'trending' }
   }
 
@@ -143,6 +145,9 @@ export function BusinessCard({ business, index = 0, searchQuery }: BusinessCardP
   const locationLabel = getLocationLabel(business)
   const google = business.providerRatings.google
   const instagram = business.providerRatings.instagram
+  // Instagram-branded UI only renders once a verified integration supplies the
+  // data. Until then these numbers are seed values, not Instagram's.
+  const showInstagram = hasVerifiedInstagramData(business)
   const foodHygiene = business.providerRatings.foodHygiene
   const bookingCom = business.providerRatings.bookingCom
 
@@ -171,8 +176,10 @@ export function BusinessCard({ business, index = 0, searchQuery }: BusinessCardP
   const isVerified = business.flags.verified === true
   // When only Google data exists we render a richer, full-width Google module
   // instead of a half-empty two-column grid.
+  // Instagram only counts as a provider here when it is actually shown,
+  // otherwise a hidden tile would leave a half-empty two-column grid.
   const hasOtherProviders =
-    Boolean(instagram) || foodHygiene !== undefined || bookingCom !== undefined
+    showInstagram || foodHygiene !== undefined || bookingCom !== undefined
   const showRichGoogle = google?.rating !== undefined && !hasOtherProviders
   
   const nextImage = useCallback((e: React.MouseEvent) => {
@@ -234,8 +241,11 @@ export function BusinessCard({ business, index = 0, searchQuery }: BusinessCardP
             </div>
           )}
           
-          {/* Instagram Source Label - only when no badge and real Instagram data exists */}
-          {!primaryBadge && instagram && (
+          {/* Instagram source label - gated on a verified Instagram
+              integration. "Latest posts" implied the card image was Instagram
+              feed content when it is actually a Google Places photo, and it
+              was keyed off follower counts rather than image provenance. */}
+          {!primaryBadge && showInstagram && (
             <div className="absolute top-4 left-4 flex items-center gap-2">
               <div className={cn(
                 "flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-card/90 backdrop-blur-md shadow-lg",
@@ -442,7 +452,7 @@ export function BusinessCard({ business, index = 0, searchQuery }: BusinessCardP
             )}
             
             {/* Instagram */}
-            {instagram && (instagram.followers !== undefined || instagram.trending) && (
+            {showInstagram && instagram && (instagram.followers !== undefined || instagram.trending) && (
               <div className="flex items-center gap-2">
                 <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-pink-500 via-red-500 to-yellow-500 flex items-center justify-center shadow-sm">
                   <Instagram className="h-3.5 w-3.5 text-white" />

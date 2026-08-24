@@ -13,6 +13,7 @@ import {
   getLocationLabel,
 } from "@/lib/business/normalise-business"
 import { formatPriceLevel } from "@/lib/business/category-mapping"
+import { isTrending } from "@/lib/business/provenance"
 
 interface AIPicksProps {
   businesses: Business[]
@@ -22,7 +23,7 @@ export function AIPicks({ businesses }: AIPicksProps) {
   // Select AI picks based on criteria:
   // - High Google rating (4.5+)
   // - Strong food hygiene (4+)
-  // - Trending on Instagram
+  // - Trending (ranking input only; not surfaced as an Instagram claim)
   const aiPicks = useMemo(() => {
     const scored = businesses.map((business) => {
       let score = 0
@@ -40,8 +41,10 @@ export function AIPicks({ businesses }: AIPicksProps) {
         score += foodHygiene * 5
       }
 
-      // Trending bonus (20 points)
-      if (instagram?.trending) {
+      // Trending bonus (20 points). Reads the provider-neutral flag, which the
+      // normaliser derives from the same underlying value - ranking output is
+      // unchanged, it just no longer depends on an Instagram-shaped field.
+      if (isTrending(business)) {
         score += 20
       }
 
@@ -99,7 +102,7 @@ export function AIPicks({ businesses }: AIPicksProps) {
           {aiPicks.map((business, index) => {
             const googleRating = business.providerRatings.google?.rating ?? getHeadlineRating(business)
             const foodHygiene = business.providerRatings.foodHygiene
-            const trending = business.providerRatings.instagram?.trending
+            const trending = isTrending(business)
             return (
               <Link
                 key={business.id}
