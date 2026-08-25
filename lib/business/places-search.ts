@@ -3,6 +3,7 @@ import "server-only"
 import type { Business, OpeningHours } from "@/lib/types/business"
 import { mapGooglePlaceToBusiness, type GooglePlaceResult } from "@/lib/business/google-places"
 import { readCachedDetails } from "@/lib/business/google-details-cache"
+import { readCachedHygiene } from "@/lib/business/fsa-hygiene-cache"
 import { parseLegacyAddressComponents, type LegacyAddressComponent } from "@/lib/business/location"
 import type { GoogleDetails } from "@/lib/types/business"
 
@@ -201,8 +202,18 @@ export async function fetchLiveBusinessById(placeId: string): Promise<Business |
 
     // Attach cached Google Place Details enrichment (amenities/editorial summary)
     // for this venue. Pure cache read - never calls Place Details (New) here.
-    const cached = await readCachedDetails([placeId])
+    // Also read the cached FSA hygiene rating for this venue. Same contract:
+    // pure cache read, never calls the FSA, and a miss simply means the venue
+    // shows no hygiene rating.
+    const [cached, cachedHygieneMap] = await Promise.all([
+      readCachedDetails([placeId]),
+      readCachedHygiene([placeId]).catch((error) => {
+        console.error("[v0] readCachedHygiene failed for detail view:", error)
+        return new Map()
+      }),
+    ])
     const cachedDetails = cached.get(placeId)
+    const foodHygieneRating = cachedHygieneMap.get(placeId)
 
     // Parse the structured address components this Details call returned (legacy
     // Basic Data - no extra cost). Prefer the enrichment cache's location when
@@ -238,6 +249,11 @@ export async function fetchLiveBusinessById(placeId: string): Promise<Business |
       ...business,
       location: mergedLocation,
       ...(googleDetails ? { googleDetails } : {}),
+      // Additive only - spreads over the existing providerRatings so the
+      // Google rating, review count and any other provider data are preserved.
+      ...(foodHygieneRating
+        ? { providerRatings: { ...business.providerRatings, foodHygieneRating } }
+        : {}),
       openingHours: result.opening_hours?.weekday_text?.length
         ? parseWeekdayText(result.opening_hours.weekday_text)
         : business.openingHours,
@@ -311,9 +327,16 @@ export async function fetchLiveBusinesses(
 }
 
 /**
- * Attach cached Google Place Details enrichment to live businesses by place id.
+ * Attach cached Google Place Details enrichment AND cached FSA hygiene ratings
+ * to live businesses by place id.
+ *
  * Read-only and failure-tolerant: on any cache miss or error the businesses are
- * returned exactly as they came in.
+ * returned exactly as they came in. Neither Google nor the FSA is ever called
+ * from here, so the homepage stays on the cheap Text Search SKU.
+ *
+ * The two caches are independent - a venue can have Google enrichment without a
+ * hygiene rating (no confident FSA match) and vice versa. Hygiene is purely
+ * additive: it never modifies coordinates, Google ratings, reviews or photos.
  */
 async function attachCachedDetails(businesses: Business[]): Promise<Business[]> {
   const placeIds = businesses
@@ -322,17 +345,39 @@ async function attachCachedDetails(businesses: Business[]): Promise<Business[]> 
 
   if (placeIds.length === 0) return businesses
 
-  try {
-    const cached = await readCachedDetails(placeIds)
-    if (cached.size === 0) return businesses
+  // Read both caches concurrently, and let either fail independently so a
+  // problem with one never suppresses the other.
+  const [detailsResult, hygieneResult] = await Promise.allSettled([
+    readCachedDetails(placeIds),
+    readCachedHygiene(placeIds),
+  ])
 
-    return businesses.map((business) => {
-      const key = business.externalIds?.googlePlaceId ?? business.id
-      const details = key ? cached.get(key) : undefined
-      return details ? { ...business, googleDetails: details } : business
-    })
-  } catch (error) {
-    console.error("[v0] attachCachedDetails failed; serving un-enriched:", error)
-    return businesses
+  if (detailsResult.status === "rejected") {
+    console.error("[v0] readCachedDetails failed; serving un-enriched:", detailsResult.reason)
   }
+  if (hygieneResult.status === "rejected") {
+    console.error("[v0] readCachedHygiene failed; serving without hygiene:", hygieneResult.reason)
+  }
+
+  const details = detailsResult.status === "fulfilled" ? detailsResult.value : new Map()
+  const hygiene = hygieneResult.status === "fulfilled" ? hygieneResult.value : new Map()
+
+  if (details.size === 0 && hygiene.size === 0) return businesses
+
+  return businesses.map((business) => {
+    const key = business.externalIds?.googlePlaceId ?? business.id
+    if (!key) return business
+
+    const googleDetails = details.get(key)
+    const foodHygieneRating = hygiene.get(key)
+    if (!googleDetails && !foodHygieneRating) return business
+
+    return {
+      ...business,
+      ...(googleDetails ? { googleDetails } : {}),
+      ...(foodHygieneRating
+        ? { providerRatings: { ...business.providerRatings, foodHygieneRating } }
+        : {}),
+    }
+  })
 }

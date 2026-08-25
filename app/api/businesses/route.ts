@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { mapSupabaseRowToBusiness, type BusinessRow } from "@/lib/supabase/businesses"
 import { fetchLiveBusinesses } from "@/lib/business/places-search"
+import { attachCachedHygiene } from "@/lib/business/fsa-hygiene-cache"
 import type { Business } from "@/lib/types/business"
 
 export const dynamic = "force-dynamic"
@@ -24,7 +25,12 @@ async function fetchSupabaseBusinesses(): Promise<Business[]> {
       return []
     }
 
-    return (data as BusinessRow[] | null)?.map(mapSupabaseRowToBusiness) ?? []
+    const businesses = (data as BusinessRow[] | null)?.map(mapSupabaseRowToBusiness) ?? []
+
+    // Attach cached FSA hygiene ratings. Live Google venues already get this
+    // inside fetchLiveBusinesses; curated rows need it here. Pure cache read -
+    // never calls the FSA, and never touches any existing field.
+    return attachCachedHygiene(businesses)
   } catch (err) {
     console.error("[v0] Unexpected error reading Supabase businesses:", err)
     return []

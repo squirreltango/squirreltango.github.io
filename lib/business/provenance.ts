@@ -1,4 +1,4 @@
-import type { Business, GalleryImage } from "@/lib/types/business"
+import type { Business, FoodHygieneRating, GalleryImage } from "@/lib/types/business"
 
 /**
  * Single source of truth for provider attribution in the UI.
@@ -97,6 +97,40 @@ export function sanitiseTags(tags: string[]): string[] {
     result.push(replacement)
   }
   return result
+}
+
+/**
+ * The ONLY sanctioned way to read a hygiene rating for display.
+ *
+ * `providerRatings.foodHygiene` is a legacy, hand-authored seed number from
+ * `lib/data/businesses.ts` and `scripts/002_seed_businesses.sql`. It was never
+ * sourced from the Food Standards Agency, so presenting it as a hygiene rating
+ * - especially with an FSA attribution - would be a fabricated food-safety
+ * claim. This function ignores it entirely.
+ *
+ * Returns the real FSA rating only when a confident match exists. Absent means
+ * "render nothing"; callers must never fall back to the legacy number.
+ */
+export function getVerifiedHygieneRating(business: Business): FoodHygieneRating | null {
+  const rating = business.providerRatings.foodHygieneRating
+  if (!rating) return null
+  // Belt and braces: the matcher, the cache layer and the DB CHECK constraint
+  // all reject anything below "high", so this should be unreachable.
+  if (rating.matchConfidence !== "exact" && rating.matchConfidence !== "high") return null
+  if (!rating.ratingValue?.trim()) return null
+  return rating
+}
+
+/**
+ * True when a business carries a legacy fabricated hygiene number but no real
+ * FSA match. Used by the data audit to quantify how much of the old seed data
+ * is being (correctly) suppressed.
+ */
+export function hasLegacySeedHygieneData(business: Business): boolean {
+  return (
+    business.providerRatings.foodHygiene !== undefined &&
+    getVerifiedHygieneRating(business) === null
+  )
 }
 
 export type ImageProvenance = { provider: "google" | "instagram"; label: string }
