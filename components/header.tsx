@@ -4,7 +4,6 @@ import Link from "next/link"
 import { User, Heart, Map, Menu, X } from "lucide-react"
 import { useState } from "react"
 import { cn } from "@/lib/utils"
-import { LookMeUpLogo } from "@/components/brand/look-me-up-logo"
 
 interface HeaderProps {
   onOpenAuth?: () => void
@@ -27,10 +26,12 @@ export function Header({ onOpenAuth, viewMode = "list", onViewModeChange }: Head
             )}>
               <span className="text-background font-serif font-semibold text-xl transition-transform duration-300 group-hover:scale-110">L</span>
             </div>
-            <LookMeUpLogo className={cn(
+            <span className={cn(
               "font-serif font-semibold text-2xl tracking-tight text-foreground",
               "transition-all duration-300 group-hover:tracking-normal"
-            )} />
+            )}>
+              LookMeUp
+            </span>
           </Link>
 
           {/* Desktop Navigation */}
