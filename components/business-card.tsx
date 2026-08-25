@@ -2,7 +2,7 @@
 
 import Image from "next/image"
 import Link from "next/link"
-import { Star, MapPin, Heart, Instagram, ShieldCheck, Building2, TrendingUp, ChevronLeft, ChevronRight, Zap, Search, Sparkles, Award, Gem, Clock } from "lucide-react"
+import { Star, MapPin, Heart, Instagram, ShieldCheck, Building2, TrendingUp, ChevronLeft, ChevronRight, Search, Sparkles, Award, Gem, Clock } from "lucide-react"
 import { useState, useCallback, useMemo } from "react"
 import type { Business } from "@/lib/types/business"
 import {
@@ -174,6 +174,9 @@ export function BusinessCard({ business, index = 0, searchQuery }: BusinessCardP
   // Footer wording must not over-claim. Live Google listings are labelled as
   // such; only genuinely verified curated listings say "Verified".
   const isVerified = business.flags.verified === true
+  // The footer now carries provenance only, so it should collapse entirely
+  // when neither signal is present rather than render an empty divider.
+  const hasProvenanceFooter = isVerified || google?.rating !== undefined
   // When only Google data exists we render a richer, full-width Google module
   // instead of a half-empty two-column grid.
   // Instagram only counts as a provider here when it is actually shown,
@@ -577,28 +580,30 @@ export function BusinessCard({ business, index = 0, searchQuery }: BusinessCardP
           )}
           
           {/* Footer - honest, source-aware provenance. No "Verified ratings"
-              unless the listing is genuinely flagged verified. */}
-          <div className={cn(
-            "flex items-center gap-3 pt-3 border-t border-border/40",
-            "transition-all duration-300",
-            isHovered && "border-border/60"
-          )}>
-            {isVerified ? (
-              <div className="flex items-center gap-1.5 text-muted-foreground">
-                <ShieldCheck className="h-3.5 w-3.5 text-blue-500" />
-                <span className="text-xs">Verified listing</span>
-              </div>
-            ) : google?.rating !== undefined ? (
-              <div className="flex items-center gap-1.5 text-muted-foreground">
-                <Star className="h-3.5 w-3.5 fill-amber-500 text-amber-500" />
-                <span className="text-xs">Google rating</span>
-              </div>
-            ) : null}
-            <div className="flex items-center gap-1.5 text-muted-foreground">
-              <Zap className="h-3.5 w-3.5 text-amber-500" />
-              <span className="text-xs">{isLiveListing ? "Live listing" : "Live data"}</span>
+              unless the listing is genuinely flagged verified.
+              Rendered only when there is actually a provenance line to show:
+              the block below is the sole remaining child, so rendering the
+              wrapper unconditionally would leave a bare `border-t` divider and
+              stray top padding on cards with neither signal. */}
+          {hasProvenanceFooter && (
+            <div className={cn(
+              "flex items-center gap-3 pt-3 border-t border-border/40",
+              "transition-all duration-300",
+              isHovered && "border-border/60"
+            )}>
+              {isVerified ? (
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <ShieldCheck className="h-3.5 w-3.5 text-blue-500" />
+                  <span className="text-xs">Verified listing</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <Star className="h-3.5 w-3.5 fill-amber-500 text-amber-500" />
+                  <span className="text-xs">Google rating</span>
+                </div>
+              )}
             </div>
-          </div>
+          )}
         </div>
       </div>
     </Link>
