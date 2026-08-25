@@ -1,4 +1,5 @@
 import type { Business, FoodHygieneRating, FsaMatchConfidence } from "@/lib/types/business"
+import { resolvePostcode } from "@/lib/business/postcode"
 
 /**
  * Food Standards Agency (FSA) hygiene rating client.
@@ -147,7 +148,37 @@ export function nameSimilarity(a: string | undefined | null, b: string | undefin
 // --- Postcode handling ------------------------------------------------------
 
 /** Uppercase, strip all whitespace. "e1 4ut" -> "E14UT". */
+/**
+ * The postcode used for FSA matching, from the strongest source available.
+ *
+ * Structured Google data wins; otherwise we recover the postcode already
+ * present inside the formatted address. Google routinely omits the
+ * `postal_code` component for UK places, which previously left every match
+ * running at the weaker `postcode: "unknown"` tier despite the postcode being
+ * right there in the address string.
+ *
+ * This only ADDS evidence - scoring, thresholds and ambiguity rules are
+ * untouched. A postcode still has to AGREE with the FSA record to help, a
+ * contradictory one remains a hard veto, and a postcode alone can never carry
+ * a match without name similarity plus distance.
+ *
+ * Exported so the enrichment job can report the same value the matcher used,
+ * rather than re-deriving it and risking drift.
+ */
+export function resolveBusinessPostcode(business: Business): string | null {
+  return resolvePostcode({
+    structured: business.location?.postcode,
+    addressStrings: [
+      business.googleDetails?.location?.formattedAddress,
+      business.googleDetails?.location?.shortFormattedAddress,
+      business.location?.address,
+    ],
+  })
+}
+
 export function normalisePostcode(postcode: string | undefined | null): string | null {
+  // Note: this is the COMPARISON helper (strips spaces for equality checks).
+  // For extracting/formatting a postcode use lib/business/postcode.ts.
   if (!postcode) return null
   const value = postcode.toUpperCase().replace(/\s+/g, "")
   return value || null
@@ -401,7 +432,7 @@ export async function matchFsaHygiene(business: Business): Promise<FsaMatchResul
   const name = business.name?.trim()
   if (!name) return { status: "no-name", reason: "Business has no name to match on" }
 
-  const postcode = business.location?.postcode ?? null
+  const postcode = resolveBusinessPostcode(business)
   const lat = business.location?.coordinates?.lat
   const lng = business.location?.coordinates?.lng
 

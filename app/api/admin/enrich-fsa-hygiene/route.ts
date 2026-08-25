@@ -1,7 +1,11 @@
 import type { NextRequest } from "next/server"
 import { verifyAdminRequest } from "@/lib/admin-auth"
 import { fetchLiveBusinesses } from "@/lib/business/places-search"
-import { matchFsaHygiene, refreshFsaHygiene } from "@/lib/business/fsa-hygiene"
+import {
+  matchFsaHygiene,
+  refreshFsaHygiene,
+  resolveBusinessPostcode,
+} from "@/lib/business/fsa-hygiene"
 import {
   readCachedHygiene,
   writeCachedHygiene,
@@ -164,7 +168,10 @@ export async function POST(request: NextRequest) {
     matches: [] as {
       business: string
       businessAddress?: string
+      /** Google's structured postal_code - usually absent for UK places. */
       postcode?: string
+      /** The postcode actually fed to the matcher, after extraction. */
+      resolvedPostcode?: string
       fsaName: string
       fsaAddress?: string
       fsaPostcode?: string
@@ -196,6 +203,7 @@ export async function POST(request: NextRequest) {
     rejections: [] as {
       business: string
       postcode?: string
+      resolvedPostcode?: string
       status: string
       reason?: string
       diagnostics?: unknown
@@ -238,6 +246,7 @@ export async function POST(request: NextRequest) {
         report.rejections.push({
           business: business.name,
           postcode: business.location?.postcode,
+          resolvedPostcode: resolveBusinessPostcode(business) ?? undefined,
           status: result.status,
           reason: result.reason,
           diagnostics: result.diagnostics,
@@ -283,6 +292,7 @@ export async function POST(request: NextRequest) {
         business: business.name,
         businessAddress: business.location?.address,
         postcode: business.location?.postcode,
+        resolvedPostcode: resolveBusinessPostcode(business) ?? undefined,
         fsaName: rating.businessName,
         fsaAddress: rating.address,
         fsaPostcode: rating.postcode,
