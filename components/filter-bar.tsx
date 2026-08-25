@@ -25,7 +25,13 @@ import { Button } from "@/components/ui/button"
 export type SortOption = "relevance" | "google_rating" | "instagram_followers"
 export type FilterOptions = {
   trendingOnly: boolean
-  minFoodHygiene: number | null
+  /**
+   * Was `minFoodHygiene: number | null`. Now a boolean because a numeric
+   * threshold cannot express hygiene across both UK schemes: Scotland's FHIS
+   * returns "Pass", which has no position on a 0-5 scale. "Strong hygiene"
+   * means FHRS 4-5 OR an FHIS pass - see `isStrongHygiene`.
+   */
+  strongHygieneOnly: boolean
   hasBookingRating: boolean
 }
 
@@ -35,6 +41,12 @@ interface FilterBarProps {
   filters: FilterOptions
   onFiltersChange: (filters: FilterOptions) => void
   activeFilterCount: number
+  /**
+   * False when no business in the current result set has a verified FSA
+   * rating, in which case the hygiene filter is hidden rather than offered as
+   * a control that can only ever return zero results.
+   */
+  hygieneFilterAvailable?: boolean
 }
 
 const sortOptions: { value: SortOption; label: string; icon: React.ReactNode }[] = [
@@ -48,7 +60,8 @@ export function FilterBar({
   onSortChange, 
   filters, 
   onFiltersChange,
-  activeFilterCount 
+  activeFilterCount,
+  hygieneFilterAvailable = false,
 }: FilterBarProps) {
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
 
@@ -61,7 +74,7 @@ export function FilterBar({
   const clearAllFilters = () => {
     onFiltersChange({
       trendingOnly: false,
-      minFoodHygiene: null,
+      strongHygieneOnly: false,
       hasBookingRating: false,
     })
     onSortChange("relevance")
@@ -154,13 +167,17 @@ export function FilterBar({
           Trending
         </FilterPill>
 
-        <FilterPill
-          active={filters.minFoodHygiene !== null}
-          onClick={() => toggleFilter("minFoodHygiene", filters.minFoodHygiene === null ? 4 : null)}
-          icon={<ShieldCheck className={cn("h-3.5 w-3.5", filters.minFoodHygiene !== null ? "text-background" : "text-emerald-500")} />}
-        >
-          Top Hygiene (4+)
-        </FilterPill>
+        {/* Hidden entirely when nothing in the result set has a verified FSA
+            rating, so the control can never return an empty list. */}
+        {hygieneFilterAvailable && (
+          <FilterPill
+            active={filters.strongHygieneOnly}
+            onClick={() => toggleFilter("strongHygieneOnly", !filters.strongHygieneOnly)}
+            icon={<ShieldCheck className={cn("h-3.5 w-3.5", filters.strongHygieneOnly ? "text-background" : "text-emerald-500")} />}
+          >
+            Top Hygiene
+          </FilterPill>
+        )}
 
         <FilterPill
           active={filters.hasBookingRating}
@@ -269,22 +286,24 @@ export function FilterBar({
                   {filters.trendingOnly && <Check className="h-4 w-4" />}
                 </button>
 
-                <button
-                  onClick={() => toggleFilter("minFoodHygiene", filters.minFoodHygiene === null ? 4 : null)}
-                  className={cn(
-                    "flex items-center justify-between w-full px-4 py-3 rounded-xl text-sm font-medium",
-                    "transition-all duration-200",
-                    filters.minFoodHygiene !== null
-                      ? "bg-foreground text-background"
-                      : "bg-secondary/50 text-foreground hover:bg-secondary"
-                  )}
-                >
-                  <span className="flex items-center gap-2">
-                    <ShieldCheck className={cn("h-4 w-4", filters.minFoodHygiene !== null ? "text-background" : "text-emerald-500")} />
-                    Top Food Hygiene (4+)
-                  </span>
-                  {filters.minFoodHygiene !== null && <Check className="h-4 w-4" />}
-                </button>
+                {hygieneFilterAvailable && (
+                  <button
+                    onClick={() => toggleFilter("strongHygieneOnly", !filters.strongHygieneOnly)}
+                    className={cn(
+                      "flex items-center justify-between w-full px-4 py-3 rounded-xl text-sm font-medium",
+                      "transition-all duration-200",
+                      filters.strongHygieneOnly
+                        ? "bg-foreground text-background"
+                        : "bg-secondary/50 text-foreground hover:bg-secondary"
+                    )}
+                  >
+                    <span className="flex items-center gap-2">
+                      <ShieldCheck className={cn("h-4 w-4", filters.strongHygieneOnly ? "text-background" : "text-emerald-500")} />
+                      Top Food Hygiene
+                    </span>
+                    {filters.strongHygieneOnly && <Check className="h-4 w-4" />}
+                  </button>
+                )}
 
                 <button
                   onClick={() => toggleFilter("hasBookingRating", !filters.hasBookingRating)}
@@ -330,11 +349,11 @@ export function FilterBar({
               </button>
             </span>
           )}
-          {filters.minFoodHygiene !== null && (
+          {filters.strongHygieneOnly && (
             <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-100 text-emerald-700 text-xs font-medium">
               <ShieldCheck className="h-3 w-3" />
-              Hygiene 4+
-              <button onClick={() => toggleFilter("minFoodHygiene", null)} className="ml-1 hover:text-emerald-900">
+              Top hygiene
+              <button onClick={() => toggleFilter("strongHygieneOnly", false)} className="ml-1 hover:text-emerald-900">
                 <X className="h-3 w-3" />
               </button>
             </span>

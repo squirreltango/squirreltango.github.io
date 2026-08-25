@@ -42,11 +42,14 @@ export type HygieneDisplay =
   | {
       kind: "pending"
       label: string
+      /** Terse form for width-constrained surfaces like map pills. */
+      shortLabel: string
       descriptor: string
     }
   | {
       kind: "exempt"
       label: string
+      shortLabel: string
       descriptor: string
     }
 
@@ -83,6 +86,7 @@ export function describeHygieneRating(rating: FoodHygieneRating | undefined | nu
     return {
       kind: "pending",
       label: "Awaiting inspection",
+      shortLabel: "Awaiting",
       descriptor: "This venue has not been given a hygiene rating yet",
     }
   }
@@ -92,6 +96,7 @@ export function describeHygieneRating(rating: FoodHygieneRating | undefined | nu
     return {
       kind: "exempt",
       label: "Exempt",
+      shortLabel: "Exempt",
       descriptor: "This venue is exempt from hygiene rating inspection",
     }
   }
@@ -138,6 +143,49 @@ export function describeHygieneRating(rating: FoodHygieneRating | undefined | nu
 
   // Unrecognised - return null rather than guessing at a meaning.
   return null
+}
+
+/**
+ * Scheme-aware ranking contribution, 0-25 points.
+ *
+ * Ranking cannot simply multiply `ratingValue` by 5: Scotland's "Pass" is not a
+ * number, and "Exempt"/"AwaitingInspection" would coerce to NaN or 0 and
+ * silently penalise venues that have done nothing wrong. So:
+ *   * numeric FHRS -> value * 5 (0-25)
+ *   * FHIS status   -> mapped by tone
+ *   * pending/exempt/absent/unrecognised -> 0, i.e. neutral, never a penalty
+ */
+export function hygieneRankingScore(rating: FoodHygieneRating | undefined | null): number {
+  const display = describeHygieneRating(rating)
+  if (!display) return 0
+
+  if (display.kind === "numeric") return display.value * 5
+  if (display.kind === "status") {
+    if (display.tone === "good") return 22
+    if (display.tone === "mixed") return 11
+    return 0
+  }
+  // Pending and exempt are genuinely unknown - contribute nothing either way.
+  return 0
+}
+
+/**
+ * True when the rating is a positive signal worth surfacing as a highlight
+ * badge (FHRS 4-5, or an FHIS pass). Pending/exempt never qualify.
+ */
+export function isStrongHygiene(rating: FoodHygieneRating | undefined | null): boolean {
+  const display = describeHygieneRating(rating)
+  if (!display) return false
+  if (display.kind === "numeric") return display.value >= 4
+  if (display.kind === "status") return display.tone === "good"
+  return false
+}
+
+/** Short badge label, e.g. "5/5" for FHRS or "Pass" for FHIS. */
+export function hygieneBadgeLabel(rating: FoodHygieneRating | undefined | null): string | null {
+  const display = describeHygieneRating(rating)
+  if (!display) return null
+  return display.kind === "numeric" ? `${display.label}/${display.max}` : display.label
 }
 
 /** True when the value is a numeric FHRS score, i.e. "X out of 5" is valid. */

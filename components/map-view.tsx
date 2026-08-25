@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { Star, MapPin, X, Navigation, Heart, ExternalLink, Instagram, ShieldCheck, Building2, TrendingUp, Bookmark, ChevronLeft, ChevronRight, Loader2, Maximize2, Search } from "lucide-react"
+import { Star, MapPin, X, Navigation, Heart, ExternalLink, Instagram, Building2, TrendingUp, Bookmark, ChevronLeft, ChevronRight, Loader2, Maximize2, Search } from "lucide-react"
 import type { Business } from "@/lib/types/business"
 import {
   getHeadlineRating,
@@ -13,6 +13,7 @@ import {
 } from "@/lib/business/normalise-business"
 import { formatPriceLevel } from "@/lib/business/category-mapping"
 import { hasVerifiedInstagramData, isTrending } from "@/lib/business/provenance"
+import { HygieneBadgePill } from "@/components/hygiene-badge"
 import { cn } from "@/lib/utils"
 
 // Type for Leaflet - imported dynamically
@@ -613,24 +614,8 @@ export function MapView({ businesses, focusBusinessId }: MapViewProps) {
               </div>
             )}
 
-            {/* Food Hygiene */}
-            {business.providerRatings.foodHygiene !== undefined && (
-              <div className={cn(
-                "flex items-center gap-2 p-2 rounded-xl",
-                business.providerRatings.foodHygiene >= 4 ? "bg-emerald-50" : "bg-amber-50"
-              )}>
-                <ShieldCheck className={cn(
-                  "h-4 w-4 shrink-0",
-                  business.providerRatings.foodHygiene >= 4 ? "text-emerald-600" : "text-amber-600"
-                )} />
-                <span className={cn(
-                  "text-sm font-semibold",
-                  business.providerRatings.foodHygiene >= 4 ? "text-emerald-700" : "text-amber-700"
-                )}>
-                  {business.providerRatings.foodHygiene}/5
-                </span>
-              </div>
-            )}
+            {/* Official FSA hygiene rating - self-hiding when unmatched. */}
+            <HygieneBadgePill business={business} />
 
             {/* Booking.com */}
             {business.providerRatings.bookingCom !== undefined && (

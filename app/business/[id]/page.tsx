@@ -3,7 +3,7 @@
 import { use, useState } from "react"
 import useSWR from "swr"
 import Link from "next/link"
-import { ArrowLeft, Star, MapPin, Heart, Share2, Instagram, ShieldCheck, Building2, TrendingUp, ExternalLink, Loader2 } from "lucide-react"
+import { ArrowLeft, Star, MapPin, Heart, Share2, Instagram, Building2, TrendingUp, ExternalLink, Loader2 } from "lucide-react"
 import { businesses as mockBusinesses } from "@/lib/data"
 import type { Business } from "@/lib/types/business"
 import {
@@ -18,6 +18,7 @@ import { getBusinessFullAddress } from "@/lib/business/location"
 import { getAmenityChips } from "@/lib/business/amenities"
 import { PhotoGallery } from "@/components/photo-gallery"
 import { hasVerifiedInstagramData } from "@/lib/business/provenance"
+import { HygieneBadgeDetail } from "@/components/hygiene-badge"
 import { BusinessPhotoCarousel } from "@/components/business-photo-carousel"
 import { BusinessInfoRows } from "@/components/business-info-rows"
 import { cn } from "@/lib/utils"
@@ -338,67 +339,10 @@ export default function BusinessDetailPage({ params }: { params: Promise<{ id: s
                   </div>
                 </div>
 
-                {/* Food Hygiene Rating */}
-                {business.providerRatings.foodHygiene !== undefined && (
-                  <div className={cn(
-                    "flex flex-col gap-2 p-4 rounded-2xl border",
-                    business.providerRatings.foodHygiene >= 4 
-                      ? "bg-emerald-50/50 border-emerald-200/50" 
-                      : business.providerRatings.foodHygiene >= 3 
-                        ? "bg-amber-50/50 border-amber-200/50"
-                        : "bg-red-50/50 border-red-200/50",
-                    "transition-all duration-300 hover:shadow-sm"
-                  )}>
-                    <div className="flex items-center gap-2">
-                      <div className={cn(
-                        "w-8 h-8 rounded-xl flex items-center justify-center",
-                        business.providerRatings.foodHygiene >= 4 
-                          ? "bg-emerald-100" 
-                          : business.providerRatings.foodHygiene >= 3 
-                            ? "bg-amber-100"
-                            : "bg-red-100"
-                      )}>
-                        <ShieldCheck className={cn(
-                          "h-4 w-4",
-                          business.providerRatings.foodHygiene >= 4 
-                            ? "text-emerald-600" 
-                            : business.providerRatings.foodHygiene >= 3 
-                              ? "text-amber-600"
-                              : "text-red-600"
-                        )} />
-                      </div>
-                      <span className="text-sm font-medium text-foreground">Food Hygiene</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className={cn(
-                          "text-lg font-bold",
-                          business.providerRatings.foodHygiene >= 4 
-                            ? "text-emerald-700" 
-                            : business.providerRatings.foodHygiene >= 3 
-                              ? "text-amber-700"
-                              : "text-red-700"
-                        )}>
-                          {business.providerRatings.foodHygiene}/5
-                        </span>
-                        <span className={cn(
-                          "text-xs font-medium px-2 py-0.5 rounded-full",
-                          business.providerRatings.foodHygiene >= 4 
-                            ? "bg-emerald-100 text-emerald-700" 
-                            : business.providerRatings.foodHygiene === 3
-                              ? "bg-amber-100 text-amber-700"
-                              : "bg-red-100 text-red-700"
-                        )}>
-                          {business.providerRatings.foodHygiene >= 4 
-                            ? "Very Good" 
-                            : business.providerRatings.foodHygiene === 3
-                              ? "Satisfactory"
-                              : "Needs Improvement"}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                )}
+                {/* Official FSA hygiene rating. Carries its own attribution,
+                    inspection date and link to the FSA register, and renders
+                    nothing unless a confident FSA match exists. */}
+                <HygieneBadgeDetail business={business} />
 
                 {/* Booking.com Rating - Only for hotels */}
                 {business.providerRatings.bookingCom !== undefined && (

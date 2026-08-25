@@ -15,7 +15,8 @@ import { AIPicks } from "@/components/ai-picks"
 import { AISearch } from "@/components/ai-search"
 import { Loader2, LayoutGrid, Map } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { isTrending } from "@/lib/business/provenance"
+import { isTrending, getVerifiedHygieneRating } from "@/lib/business/provenance"
+import { isStrongHygiene } from "@/lib/business/hygiene-display"
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json())
 
@@ -27,7 +28,7 @@ export default function HomePage() {
   const [sortBy, setSortBy] = useState<SortOption>("relevance")
   const [filters, setFilters] = useState<FilterOptions>({
     trendingOnly: false,
-    minFoodHygiene: null,
+    strongHygieneOnly: false,
     hasBookingRating: false,
   })
   const [isAISearching, setIsAISearching] = useState(false)
@@ -121,11 +122,20 @@ export default function HomePage() {
     setAISearchResults(null)
   }
 
+  // The hygiene filter is only offered when at least one loaded business
+  // actually carries a verified FSA rating. Before ingestion runs this is
+  // false, so the control stays hidden instead of returning zero results; it
+  // appears on its own once real ratings exist.
+  const hygieneFilterAvailable = useMemo(
+    () => businesses.some((b) => getVerifiedHygieneRating(b) !== null),
+    [businesses],
+  )
+
   const activeFilterCount = useMemo(() => {
     let count = 0
     if (sortBy !== "relevance") count++
     if (filters.trendingOnly) count++
-    if (filters.minFoodHygiene !== null) count++
+    if (filters.strongHygieneOnly) count++
     if (filters.hasBookingRating) count++
     return count
   }, [sortBy, filters])
@@ -145,8 +155,10 @@ export default function HomePage() {
       // Provider-neutral: reads LookMeUp's own `flags.trending`, never the
       // Instagram-shaped field. Same results, no implied Instagram source.
       const matchesTrending = !filters.trendingOnly || isTrending(business)
-      const matchesFoodHygiene = filters.minFoodHygiene === null ||
-        (business.providerRatings.foodHygiene !== undefined && business.providerRatings.foodHygiene >= filters.minFoodHygiene)
+      // Scheme-aware and real-data-only: matches FHRS 4-5 or an FHIS pass,
+      // never the fabricated seed number.
+      const matchesFoodHygiene = !filters.strongHygieneOnly ||
+        isStrongHygiene(getVerifiedHygieneRating(business))
       const matchesBooking = !filters.hasBookingRating || business.providerRatings.bookingCom !== undefined
 
       return matchesSearch && matchesCategory && matchesTrending && matchesFoodHygiene && matchesBooking
@@ -244,6 +256,7 @@ export default function HomePage() {
             filters={filters}
             onFiltersChange={setFilters}
             activeFilterCount={activeFilterCount}
+            hygieneFilterAvailable={hygieneFilterAvailable}
           />
         </div>
 
@@ -337,7 +350,7 @@ export default function HomePage() {
                 setSortBy("relevance")
                 setFilters({
                   trendingOnly: false,
-                  minFoodHygiene: null,
+                  strongHygieneOnly: false,
                   hasBookingRating: false,
                 })
                 setAISearchQuery(null)
