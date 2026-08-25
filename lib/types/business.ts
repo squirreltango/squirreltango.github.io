@@ -49,6 +49,47 @@ export interface TrustpilotRating {
   matchConfidence?: number
 }
 
+// Confidence tier for an FSA establishment match. Only these two tiers are
+// ever persisted or displayed - "ambiguous" matches are discarded at match
+// time and never reach this type.
+export type FsaMatchConfidence = "exact" | "high"
+
+/**
+ * Official UK Food Standards Agency hygiene rating, attached to a business only
+ * after a confident match against a specific FSA establishment.
+ *
+ * `ratingValue` is deliberately kept as the RAW string the FSA returned rather
+ * than a number, because the UK runs two different schemes:
+ *   * FHRS (England/Wales/NI) - numeric "0".."5"
+ *   * FHIS (Scotland)         - "Pass", "Improvement Required", ...
+ * Either scheme can also return "AwaitingInspection" or "Exempt". Coercing all
+ * of that into X/5 would misrepresent the rating, so the UI formats it via
+ * `describeHygieneRating` instead.
+ */
+export interface FoodHygieneRating {
+  /** FSA's stable establishment id. Cached so refreshes skip re-matching. */
+  fhrsId: number
+  /** The FSA establishment name - may differ from the LookMeUp/Google name. */
+  businessName: string
+  businessType?: string
+  address?: string
+  postcode?: string
+  /** Raw scheme-specific value. Never parsed into a number for display. */
+  ratingValue: string
+  ratingDate?: string
+  localAuthority?: string
+  schemeType?: string
+  /** True when a re-inspection has happened but the new rating isn't published. */
+  newRatingPending?: boolean
+  latitude?: number
+  longitude?: number
+  /** How the match was established. Ambiguous matches are never stored. */
+  matchConfidence: FsaMatchConfidence
+  /** Distance in metres between the Google and FSA coordinates, when both known. */
+  distanceMeters?: number
+  lastSyncedAt?: string
+}
+
 export interface OpeningHours {
   day: number // 0 = Sunday ... 6 = Saturday
   open?: string
@@ -182,7 +223,19 @@ export interface Business {
       /** ISO timestamp of the last successful live sync. */
       lastSyncedAt?: string
     }
+    /**
+     * LEGACY, FABRICATED. Hand-authored seed values from
+     * `lib/data/businesses.ts` / `scripts/002_seed_businesses.sql` - never
+     * sourced from the FSA. Gated out of the UI by
+     * `getVerifiedHygieneRating` (lib/business/provenance.ts). Use
+     * `foodHygieneRating` below for anything user-facing.
+     */
     foodHygiene?: number
+    /**
+     * Real, official FSA hygiene rating. Present only when a confident match
+     * to a specific FSA establishment was made. Absent means "show nothing".
+     */
+    foodHygieneRating?: FoodHygieneRating
     bookingCom?: number
     // Optional Trustpilot enrichment. Stored independently from Google data and
     // never averaged together. Absent when there is no confident match.
