@@ -40,6 +40,14 @@ interface EnrichBody {
   limit?: number
   force?: boolean
   dryRun?: boolean
+  /**
+   * Optional case-insensitive substring filter on business name, for targeted
+   * verification of specific venues (e.g. auditing that a multi-branch chain
+   * resolves to the right physical location). Narrows the candidate pool
+   * before `limit` is applied; it does not bypass the freshness or
+   * food-category rules.
+   */
+  names?: string[]
 }
 
 /** Spread the batch across categories rather than taking 10 restaurants. */
@@ -110,7 +118,16 @@ export async function POST(request: NextRequest) {
       )
   const alreadyFresh = foodBusinesses.length - eligible.length
 
-  const candidates = selectAcrossCategories(eligible, limit)
+  // Targeted verification: when `names` is supplied, take those businesses in
+  // dataset order rather than spreading across categories, so the audit
+  // examines exactly the venues asked for.
+  const nameFilters = (body.names ?? []).map((n) => n.toLowerCase()).filter(Boolean)
+  const candidates =
+    nameFilters.length > 0
+      ? eligible
+          .filter((b) => nameFilters.some((n) => b.name.toLowerCase().includes(n)))
+          .slice(0, limit)
+      : selectAcrossCategories(eligible, limit)
 
   const report = {
     source: "Food Standards Agency (api.ratings.food.gov.uk, x-api-version: 2)",
@@ -146,16 +163,33 @@ export async function POST(request: NextRequest) {
 
     matches: [] as {
       business: string
+      businessAddress?: string
       postcode?: string
       fsaName: string
+      fsaAddress?: string
       fsaPostcode?: string
       fhrsId: number
+      scheme: string
       rawRatingValue: string
       displayKind: string
       displayLabel: string
       confidence: string
       distanceMeters?: number
       localAuthority?: string
+      /**
+       * The concrete evidence behind this match, so a reviewer can audit the
+       * branch-level decision rather than trusting the confidence label.
+       */
+      signals?: {
+        nameScore?: number
+        postcodeAgreement?: string
+        distanceMeters?: number
+        candidatesConsidered: number
+        runnerUpName?: string
+        runnerUpRank?: number
+      }
+      /** True only when the row reached Postgres, not just the memory cache. */
+      persisted: boolean
     }[],
 
     // Every rejection with its reason - the audit trail for coverage gaps.
@@ -224,27 +258,14 @@ export async function POST(request: NextRequest) {
     report.ratingValueBreakdown[rating.ratingValue] =
       (report.ratingValueBreakdown[rating.ratingValue] ?? 0) + 1
 
-    if (report.matches.length < 40) {
-      report.matches.push({
-        business: business.name,
-        postcode: business.location?.postcode,
-        fsaName: rating.businessName,
-        fsaPostcode: rating.postcode,
-        fhrsId: rating.fhrsId,
-        rawRatingValue: rating.ratingValue,
-        displayKind: display?.kind ?? "unrenderable",
-        displayLabel: display?.label ?? "(nothing rendered)",
-        confidence: rating.matchConfidence,
-        distanceMeters:
-          rating.distanceMeters === undefined ? undefined : Math.round(rating.distanceMeters),
-        localAuthority: rating.localAuthority,
-      })
-    }
-
+    // Persist BEFORE recording the row so the report can state, per business,
+    // whether the rating actually reached Postgres rather than only memory.
+    let persisted = false
     if (!dryRun) {
       const write = await writeCachedHygiene(placeId, rating, business.id)
       if (write.durable) report.durableWrites += 1
       else report.memoryOnlyWrites += 1
+      persisted = write.durable === true
       if (!write.ok || !write.durable) {
         if (write.reason && report.rejections.length < 40) {
           report.rejections.push({
@@ -255,6 +276,38 @@ export async function POST(request: NextRequest) {
         }
       }
     }
+
+    if (report.matches.length < 40) {
+      const d = result.diagnostics
+      report.matches.push({
+        business: business.name,
+        businessAddress: business.location?.address,
+        postcode: business.location?.postcode,
+        fsaName: rating.businessName,
+        fsaAddress: rating.address,
+        fsaPostcode: rating.postcode,
+        fhrsId: rating.fhrsId,
+        scheme: rating.schemeType ?? "unknown",
+        rawRatingValue: rating.ratingValue,
+        displayKind: display?.kind ?? "unrenderable",
+        displayLabel: display?.label ?? "(nothing rendered)",
+        confidence: rating.matchConfidence,
+        distanceMeters:
+          rating.distanceMeters === undefined ? undefined : Math.round(rating.distanceMeters),
+        localAuthority: rating.localAuthority,
+        signals: d
+          ? {
+              nameScore: d.bestNameScore,
+              postcodeAgreement: d.bestPostcode,
+              distanceMeters: d.bestDistanceMeters,
+              candidatesConsidered: d.candidatesConsidered,
+              runnerUpName: d.runnerUpName,
+              runnerUpRank: d.runnerUpRank,
+            }
+          : undefined,
+        persisted,
+      })
+    }
   }
 
   const matchRate =
@@ -264,6 +317,18 @@ export async function POST(request: NextRequest) {
     report,
     summary: {
       matchRatePercent: matchRate,
+      // Flat tallies, in the exact terms used to request this run.
+      attempted: report.checked,
+      matched: report.matched,
+      unmatched:
+        report.rejectedAmbiguous +
+        report.rejectedBelowThreshold +
+        report.noCandidates +
+        report.errors,
+      ambiguous: report.rejectedAmbiguous,
+      durableWrites: report.durableWrites,
+      memoryOnlyWrites: report.memoryOnlyWrites,
+      errors: report.errors,
       note:
         "Unmatched businesses intentionally show no hygiene rating. A missing rating is always " +
         "preferable to one that might belong to a different branch of the same chain.",
