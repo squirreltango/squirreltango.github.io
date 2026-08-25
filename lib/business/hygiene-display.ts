@@ -36,6 +36,13 @@ export type HygieneDisplay =
       kind: "status"
       /** e.g. "Pass" - Scotland's FHIS scheme has no numeric score. */
       label: string
+      /**
+       * Terse form for width-constrained surfaces. Must never be a mid-word
+       * truncation: CSS-clipping a negative rating to "Improvement re..." is
+       * unacceptable for a food-safety signal, so a whole-word short form is
+       * supplied instead.
+       */
+      shortLabel: string
       descriptor: string
       tone: "good" | "mixed" | "poor"
     }
@@ -106,6 +113,7 @@ export function describeHygieneRating(rating: FoodHygieneRating | undefined | nu
     return {
       kind: "status",
       label: "Pass",
+      shortLabel: "Pass",
       descriptor: "Met hygiene standards at the last inspection",
       tone: "good",
     }
@@ -114,6 +122,7 @@ export function describeHygieneRating(rating: FoodHygieneRating | undefined | nu
     return {
       kind: "status",
       label: "Pass and Eat Safe",
+      shortLabel: "Eat Safe",
       descriptor: "Exceeded hygiene standards at the last inspection",
       tone: "good",
     }
@@ -122,6 +131,9 @@ export function describeHygieneRating(rating: FoodHygieneRating | undefined | nu
     return {
       kind: "status",
       label: "Improvement required",
+      // Whole word, not a clipped "Improvement re...". Still unambiguous
+      // alongside the red warning icon.
+      shortLabel: "Improvement",
       descriptor: "Did not meet hygiene standards at the last inspection",
       tone: "poor",
     }

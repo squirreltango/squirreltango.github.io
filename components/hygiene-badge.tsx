@@ -106,8 +106,9 @@ export function HygieneBadgeCompact({ business, className }: { business: Busines
       </div>
       <div className="flex flex-col min-w-0">
         <span className={cn("text-sm font-semibold truncate", tone.value)}>
-          {/* "/5" ONLY for the numeric FHRS scheme. */}
-          {display.kind === "numeric" ? `${display.label}/${display.max}` : display.label}
+          {/* "/5" ONLY for the numeric FHRS scheme. Short form elsewhere, since
+              the card column is narrow enough to clip the full wording. */}
+          {display.kind === "numeric" ? `${display.label}/${display.max}` : display.shortLabel}
         </span>
         <span className="text-xs text-muted-foreground truncate">Hygiene &middot; FSA</span>
       </div>
@@ -135,11 +136,8 @@ export function HygieneBadgePill({ business, className }: { business: Business; 
     <div className={cn("flex items-center gap-2 p-2 rounded-xl", pillBg, className)}>
       <IconFor display={display} className={cn("h-4 w-4 shrink-0", TONE[tone].icon)} />
       <span className={cn("text-sm font-semibold truncate", TONE[tone].value)}>
-        {display.kind === "numeric"
-          ? `${display.label}/${display.max}`
-          : display.kind === "status"
-            ? display.label
-            : display.shortLabel}
+        {/* Whole-word short forms in the narrow pill - never a mid-word clip. */}
+        {display.kind === "numeric" ? `${display.label}/${display.max}` : display.shortLabel}
       </span>
       <span className="sr-only">{screenReaderLabel(display, rating)}</span>
     </div>
