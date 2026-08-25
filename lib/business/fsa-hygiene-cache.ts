@@ -151,12 +151,30 @@ export async function readCachedHygiene(placeIds: string[]): Promise<Map<string,
 
 /**
  * Attach cached hygiene ratings to a list of businesses, matched on Google
- * Place ID. Used for curated Supabase rows; live Google venues get the same
- * treatment inside `places-search.ts`.
+ * Place ID. Live Google venues get the same treatment inside
+ * `places-search.ts`.
  *
  * Purely additive and failure-tolerant - spreads over the existing
  * `providerRatings` so Google ratings, review counts and Trustpilot data are
  * preserved, and returns the input untouched on any error.
+ *
+ * KNOWN NO-OP for the curated Supabase rows, by deliberate decision.
+ *
+ * The live `businesses` table has no `external_ids` / `google_place_id`
+ * column, so `mapSupabaseRowToBusiness` never populates
+ * `externalIds.googlePlaceId` and the lookup below always finds zero keys.
+ * All 3 curated rows are UUID-keyed, and `fsa_hygiene_details` has
+ * `google_place_id` as a NOT NULL primary key, so they cannot be cached
+ * against it without a schema change to migration 004.
+ *
+ * We chose to leave 004 as written: those rows fail closed (no hygiene shown,
+ * and their fabricated `food_hygiene` seed value stays suppressed by
+ * `getVerifiedHygieneRating`), which is the safe outcome. The ~123 live Google
+ * venues are unaffected and do receive real ratings.
+ *
+ * This function is kept rather than deleted because it is already correct: if
+ * a Place ID is ever backfilled onto those rows, hygiene starts working with
+ * no code change. Do not "simplify" it away on the assumption it is unused.
  */
 export async function attachCachedHygiene(businesses: Business[]): Promise<Business[]> {
   const placeIds = businesses
