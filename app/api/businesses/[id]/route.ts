@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { mapSupabaseRowToBusiness, type BusinessRow } from "@/lib/supabase/businesses"
 import { fetchLiveBusinessById, isGooglePlaceId } from "@/lib/business/places-search"
+import { attachCachedHygiene } from "@/lib/business/fsa-hygiene-cache"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
@@ -34,7 +35,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       return Response.json({ error: "Business not found" }, { status: 404 })
     }
 
-    return Response.json(mapSupabaseRowToBusiness(data as BusinessRow))
+    // Attach the cached FSA hygiene rating for this curated venue. Pure cache
+    // read; a miss just means no hygiene section renders.
+    const [business] = await attachCachedHygiene([mapSupabaseRowToBusiness(data as BusinessRow)])
+
+    return Response.json(business)
   } catch (err) {
     console.error("[v0] Unexpected error in /api/businesses/[id]:", err)
     return Response.json({ error: "Internal server error" }, { status: 500 })

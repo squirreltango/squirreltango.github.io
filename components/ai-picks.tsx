@@ -13,7 +13,8 @@ import {
   getLocationLabel,
 } from "@/lib/business/normalise-business"
 import { formatPriceLevel } from "@/lib/business/category-mapping"
-import { isTrending } from "@/lib/business/provenance"
+import { isTrending, getVerifiedHygieneRating } from "@/lib/business/provenance"
+import { hygieneRankingScore, isStrongHygiene, hygieneBadgeLabel } from "@/lib/business/hygiene-display"
 
 interface AIPicksProps {
   businesses: Business[]
@@ -30,16 +31,17 @@ export function AIPicks({ businesses }: AIPicksProps) {
 
       const googleRating = business.providerRatings.google?.rating ?? getHeadlineRating(business) ?? 0
       const googleReviews = business.providerRatings.google?.reviews ?? getHeadlineReviewCount(business) ?? 0
-      const foodHygiene = business.providerRatings.foodHygiene
       const instagram = business.providerRatings.instagram
 
       // Google rating score (max 30 points)
       score += googleRating * 6
 
-      // Food hygiene score (max 25 points)
-      if (foodHygiene !== undefined) {
-        score += foodHygiene * 5
-      }
+      // Food hygiene score (max 25 points). Uses the REAL FSA rating only -
+      // ranking previously multiplied the fabricated seed number, which meant
+      // invented food-safety data decided which venues got promoted here.
+      // Scheme-aware: absent, pending and exempt all contribute 0 rather than
+      // being coerced into a low score.
+      score += hygieneRankingScore(getVerifiedHygieneRating(business))
 
       // Trending bonus (20 points). Reads the provider-neutral flag, which the
       // normaliser derives from the same underlying value - ranking output is
@@ -101,7 +103,7 @@ export function AIPicks({ businesses }: AIPicksProps) {
         >
           {aiPicks.map((business, index) => {
             const googleRating = business.providerRatings.google?.rating ?? getHeadlineRating(business)
-            const foodHygiene = business.providerRatings.foodHygiene
+            const verifiedHygiene = getVerifiedHygieneRating(business)
             const trending = isTrending(business)
             return (
               <Link
@@ -157,10 +159,14 @@ export function AIPicks({ businesses }: AIPicksProps) {
                           <span>Trending</span>
                         </div>
                       )}
-                      {foodHygiene !== undefined && foodHygiene >= 4 && (
+                      {/* Only a real, strong FSA rating earns a highlight
+                          badge. Label is scheme-aware, so Scotland shows
+                          "Pass" rather than a fake "/5" score. */}
+                      {isStrongHygiene(verifiedHygiene) && (
                         <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500 text-xs font-medium text-white shadow-sm">
-                          <ShieldCheck className="h-3 w-3" />
-                          <span>{foodHygiene}/5</span>
+                          <ShieldCheck className="h-3 w-3" aria-hidden="true" />
+                          <span>{hygieneBadgeLabel(verifiedHygiene)}</span>
+                          <span className="sr-only">Food Standards Agency hygiene rating</span>
                         </div>
                       )}
                     </div>

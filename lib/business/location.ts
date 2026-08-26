@@ -1,4 +1,5 @@
 import type { Business, GoogleLocation } from "@/lib/types/business"
+import { resolvePostcode } from "@/lib/business/postcode"
 
 /**
  * Location resolution for LookMeUp.
@@ -155,7 +156,12 @@ function buildLocation(
   const adminArea =
     pick(components, "administrative_area_level_2") ??
     pick(components, "administrative_area_level_1")
-  const postcode = pick(components, "postal_code")
+  // Structured `postal_code` wins; only when Google omits it (common for UK
+  // places) do we parse the postcode back out of the formatted address.
+  const postcode = resolvePostcode({
+    structured: pick(components, "postal_code"),
+    addressStrings: [opts.formattedAddress, opts.shortFormattedAddress],
+  })
 
   const location: GoogleLocation = {}
   if (neighbourhood) location.neighbourhood = neighbourhood
