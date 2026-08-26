@@ -1,8 +1,10 @@
 "use client"
 
 import Link from "next/link"
-import { User, Heart, Map, Menu, X } from "lucide-react"
+import { User, Heart, Map, Menu, X, LogOut, Store, CalendarDays } from "lucide-react"
 import { useState } from "react"
+import { useAuth } from "@/components/auth-provider"
+import { useSavedPlaces } from "@/components/saved-places-provider"
 import { cn } from "@/lib/utils"
 
 interface HeaderProps {
@@ -13,6 +15,13 @@ interface HeaderProps {
 
 export function Header({ onOpenAuth, viewMode = "list", onViewModeChange }: HeaderProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false)
+  const { user, profile, loading, isBusiness, signOut } = useAuth()
+  const { saved } = useSavedPlaces()
+
+  const initial = (profile?.display_name?.trim() || user?.email || "?")
+    .charAt(0)
+    .toUpperCase()
 
   return (
     <header className="sticky top-0 z-50 bg-card/80 backdrop-blur-xl border-b border-border/50 transition-all duration-300">
