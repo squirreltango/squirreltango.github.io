@@ -1,6 +1,6 @@
 "use client"
 
-import { use, useState } from "react"
+import { use } from "react"
 import useSWR from "swr"
 import Link from "next/link"
 import { ArrowLeft, Star, MapPin, Heart, Share2, Instagram, Building2, TrendingUp, ExternalLink, Loader2 } from "lucide-react"
@@ -17,6 +17,7 @@ import { formatPriceLevel } from "@/lib/business/category-mapping"
 import { getBusinessFullAddress } from "@/lib/business/location"
 import { getAmenityChips } from "@/lib/business/amenities"
 import { PhotoGallery } from "@/components/photo-gallery"
+import { useSavedPlaces } from "@/components/saved-places-provider"
 import { hasVerifiedInstagramData } from "@/lib/business/provenance"
 import { HygieneBadgeDetail } from "@/components/hygiene-badge"
 import { BusinessPhotoCarousel } from "@/components/business-photo-carousel"
@@ -55,7 +56,9 @@ const fallbackReviews: BusinessReview[] = [
 
 export default function BusinessDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
-  const [isSaved, setIsSaved] = useState(false)
+  // Saves live in Supabase via the provider, so the state survives navigation
+  // and refreshes. The hook must sit above the early returns below.
+  const { isSaved: isSavedRef, toggleSave } = useSavedPlaces()
 
   // Fetch from Supabase API
   const { data: supabaseBusiness, isLoading } = useSWR<Business>(
@@ -93,6 +96,11 @@ export default function BusinessDetailPage({ params }: { params: Promise<{ id: s
     return null
   }
 
+  // Prefer the Google Place ID so a save made from search results matches the
+  // same venue opened here.
+  const savedRef = business.externalIds?.googlePlaceId ?? business.id
+  const isSaved = isSavedRef(savedRef)
+
   const displayReviews = business.reviews && business.reviews.length > 0 ? business.reviews : fallbackReviews
 
   // Real Google photos for this place (deduplicated, capped at 10). Falls back
@@ -123,7 +131,9 @@ export default function BusinessDetailPage({ params }: { params: Promise<{ id: s
           </Link>
           <div className="flex items-center gap-3">
             <button
-              onClick={() => setIsSaved(!isSaved)}
+              onClick={() => void toggleSave(business)}
+              aria-pressed={isSaved}
+              aria-label={isSaved ? `Remove ${business.name} from saved` : `Save ${business.name}`}
               className={cn(
                 "p-3 rounded-2xl bg-card/90 backdrop-blur-md shadow-lg",
                 "transition-all duration-300",
@@ -442,7 +452,9 @@ export default function BusinessDetailPage({ params }: { params: Promise<{ id: s
               style={{ animation: 'fadeInUp 0.4s ease-out 0.35s forwards', opacity: 0 }}
             >
               <button
-                onClick={() => setIsSaved(!isSaved)}
+              onClick={() => void toggleSave(business)}
+              aria-pressed={isSaved}
+              aria-label={isSaved ? `Remove ${business.name} from saved` : `Save ${business.name}`}
                 className={cn(
                   "flex items-center justify-center gap-2.5 py-4 rounded-2xl font-semibold",
                   "transition-all duration-300 active:scale-[0.98]",

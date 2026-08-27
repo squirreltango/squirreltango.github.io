@@ -92,6 +92,22 @@ export function Header({ onOpenAuth, viewMode = "list", onViewModeChange }: Head
               <CalendarDays className="h-4 w-4" />
               My Plans
             </Link>
+            {/* Merchant entry point. Only shown while signed out - once signed
+                in, the account menu carries the business portal link instead. */}
+            {!user && !loading && (
+              <Link
+                href="/pricing"
+                className={cn(
+                  "flex items-center gap-2.5 px-5 py-2.5 text-sm font-medium rounded-full",
+                  "text-muted-foreground hover:text-foreground",
+                  "transition-all duration-300 ease-out",
+                  "hover:bg-secondary/80 active:scale-95"
+                )}
+              >
+                <Store className="h-4 w-4" />
+                For business
+              </Link>
+            )}
 
             {loading ? (
               <div className="ml-2 w-10 h-10 rounded-full bg-secondary/60 animate-pulse" aria-hidden="true" />

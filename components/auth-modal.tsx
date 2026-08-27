@@ -14,6 +14,11 @@ interface AuthModalProps {
   onClose: () => void
   /** Where to return after an email-link round trip. Defaults to current path. */
   returnTo?: string
+  /**
+   * Pre-selects the account type on the sign-up tab. The business portal opens
+   * the modal with "business" so a merchant doesn't have to spot the toggle.
+   */
+  defaultAccountType?: AccountType
 }
 
 const inputClass = cn(
@@ -53,7 +58,12 @@ function friendlyAuthError(message: string): string {
   return "Something went wrong. Please try again."
 }
 
-export function AuthModal({ isOpen, onClose, returnTo }: AuthModalProps) {
+export function AuthModal({
+  isOpen,
+  onClose,
+  returnTo,
+  defaultAccountType = "personal",
+}: AuthModalProps) {
   const { refreshProfile } = useAuth()
   const [mode, setMode] = useState<Mode>("login")
   const [showPassword, setShowPassword] = useState(false)
@@ -62,15 +72,22 @@ export function AuthModal({ isOpen, onClose, returnTo }: AuthModalProps) {
   const [displayName, setDisplayName] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
-  const [accountType, setAccountType] = useState<AccountType>("personal")
+  const [accountType, setAccountType] = useState<AccountType>(defaultAccountType)
 
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
   useEffect(() => {
-    if (isOpen) setIsAnimating(true)
-  }, [isOpen])
+    if (!isOpen) return
+    setIsAnimating(true)
+    // Opening from the business portal should land on sign-up with "business"
+    // already chosen, rather than the default login tab.
+    if (defaultAccountType === "business") {
+      setAccountType("business")
+      setMode("signup")
+    }
+  }, [isOpen, defaultAccountType])
 
   // Clear transient state whenever the user switches mode, so a stale error
   // from sign-in doesn't linger over the sign-up form.
