@@ -3,6 +3,7 @@ import { Inter, Playfair_Display } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { AuthProvider } from '@/components/auth-provider'
 import { SavedPlacesProvider } from '@/components/saved-places-provider'
+import { SaveAuthGate } from '@/components/save-auth-gate'
 import './globals.css'
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
@@ -40,7 +41,10 @@ export default function RootLayout({
     <html lang="en" className="bg-background">
       <body className={`${inter.variable} ${playfair.variable} font-sans antialiased`}>
         <AuthProvider>
-          <SavedPlacesProvider>{children}</SavedPlacesProvider>
+          <SavedPlacesProvider>
+            {children}
+            <SaveAuthGate />
+          </SavedPlacesProvider>
         </AuthProvider>
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
