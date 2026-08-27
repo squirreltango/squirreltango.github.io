@@ -167,10 +167,14 @@ do $$ begin
   if not exists (select 1 from pg_policies where schemaname='public' and tablename='itineraries' and policyname='itineraries_select_own') then
     create policy "itineraries_select_own" on public.itineraries for select using (auth.uid() = user_id);
   end if;
-  -- Anyone holding the link may read a plan that has been explicitly shared.
-  -- Scoped to is_public = true only; private plans stay owner-only.
-  if not exists (select 1 from pg_policies where schemaname='public' and tablename='itineraries' and policyname='itineraries_select_shared') then
-    create policy "itineraries_select_shared" on public.itineraries for select using (is_public = true);
+  -- NOTE: there is deliberately NO "select using (is_public = true)" policy.
+  -- Such a policy would let any client list every shared plan, because RLS
+  -- filters rows but does not require the caller to know the share_token.
+  -- Shared reads go exclusively through get_shared_itinerary(token), which
+  -- demands possession of the high-entropy token. If an older version of this
+  -- migration was ever applied, drop the enumerable policy.
+  if exists (select 1 from pg_policies where schemaname='public' and tablename='itineraries' and policyname='itineraries_select_shared') then
+    drop policy "itineraries_select_shared" on public.itineraries;
   end if;
   if not exists (select 1 from pg_policies where schemaname='public' and tablename='itineraries' and policyname='itineraries_insert_own') then
     create policy "itineraries_insert_own" on public.itineraries for insert with check (auth.uid() = user_id);
@@ -209,12 +213,17 @@ alter table public.itinerary_items enable row level security;
 -- Child-table policies enforce BOTH ownership of the parent AND the parent
 -- relationship, so an item cannot be attached to someone else's plan.
 do $$ begin
-  if not exists (select 1 from pg_policies where schemaname='public' and tablename='itinerary_items' and policyname='itinerary_items_select') then
-    create policy "itinerary_items_select" on public.itinerary_items for select
+  -- Owner-only. Shared viewers never read this table directly; the
+  -- get_shared_itinerary() function returns the items for the one authorised
+  -- plan. Drop the older is_public variant if it was ever applied.
+  if exists (select 1 from pg_policies where schemaname='public' and tablename='itinerary_items' and policyname='itinerary_items_select') then
+    drop policy "itinerary_items_select" on public.itinerary_items;
+  end if;
+  if not exists (select 1 from pg_policies where schemaname='public' and tablename='itinerary_items' and policyname='itinerary_items_select_own') then
+    create policy "itinerary_items_select_own" on public.itinerary_items for select
       using (exists (
         select 1 from public.itineraries i
-        where i.id = itinerary_items.itinerary_id
-          and (i.user_id = auth.uid() or i.is_public = true)
+        where i.id = itinerary_items.itinerary_id and i.user_id = auth.uid()
       ));
   end if;
   if not exists (select 1 from pg_policies where schemaname='public' and tablename='itinerary_items' and policyname='itinerary_items_insert') then
@@ -256,12 +265,17 @@ create index if not exists itinerary_participants_itinerary_idx
 alter table public.itinerary_participants enable row level security;
 
 do $$ begin
-  if not exists (select 1 from pg_policies where schemaname='public' and tablename='itinerary_participants' and policyname='itinerary_participants_select') then
-    create policy "itinerary_participants_select" on public.itinerary_participants for select
+  -- Owner-only: participant email addresses are personal data and must never
+  -- be readable by holders of a share link. get_shared_itinerary() returns
+  -- participant FIRST NAMES ONLY and never the email column.
+  if exists (select 1 from pg_policies where schemaname='public' and tablename='itinerary_participants' and policyname='itinerary_participants_select') then
+    drop policy "itinerary_participants_select" on public.itinerary_participants;
+  end if;
+  if not exists (select 1 from pg_policies where schemaname='public' and tablename='itinerary_participants' and policyname='itinerary_participants_select_own') then
+    create policy "itinerary_participants_select_own" on public.itinerary_participants for select
       using (exists (
         select 1 from public.itineraries i
-        where i.id = itinerary_participants.itinerary_id
-          and (i.user_id = auth.uid() or i.is_public = true)
+        where i.id = itinerary_participants.itinerary_id and i.user_id = auth.uid()
       ));
   end if;
   if not exists (select 1 from pg_policies where schemaname='public' and tablename='itinerary_participants' and policyname='itinerary_participants_write') then
@@ -310,6 +324,14 @@ create index if not exists business_claims_user_idx
   on public.business_claims (user_id, created_at desc);
 create index if not exists business_claims_ref_idx
   on public.business_claims (business_ref, status);
+
+-- At most ONE approved owner per business. Two users may both submit pending
+-- claims for a contested business, but a reviewer can only ever approve one -
+-- without this, two accounts could publish conflicting merchant content for
+-- the same business.
+create unique index if not exists business_claims_one_approved_per_ref
+  on public.business_claims (business_ref)
+  where status = 'approved';
 
 alter table public.business_claims enable row level security;
 
@@ -435,3 +457,109 @@ select u.id, 'personal'
 from auth.users u
 where not exists (select 1 from public.profiles p where p.id = u.id)
 on conflict (id) do nothing;
+
+
+-- =============================================================================
+-- 9. Secure itinerary sharing (capability-based, not enumerable)
+-- =============================================================================
+-- RLS above is owner-only, so a share link cannot work through a plain SELECT.
+-- Instead this SECURITY DEFINER function trades a valid share_token for
+-- exactly one plan. Because the token is the only lookup key and there is no
+-- "list shared plans" path, shared itineraries cannot be enumerated.
+--
+-- Privacy notes:
+--   * Requires is_public = true AND an exact token match.
+--   * Participant emails are never returned - first names only.
+--   * Returns a single JSON document; no row-level table access is granted.
+
+create or replace function public.get_shared_itinerary(p_share_token text)
+returns jsonb
+language plpgsql
+security definer
+-- Pin search_path so a SECURITY DEFINER function cannot be hijacked by a
+-- caller-supplied search_path.
+set search_path = public, pg_temp
+as $$
+declare
+  v_itinerary public.itineraries;
+  v_result    jsonb;
+begin
+  -- Reject anything that is not a plausible token before touching the table.
+  if p_share_token is null or length(trim(p_share_token)) < 16 then
+    return null;
+  end if;
+
+  select * into v_itinerary
+  from public.itineraries
+  where share_token = p_share_token
+    and is_public = true;
+
+  if not found then
+    return null;
+  end if;
+
+  select jsonb_build_object(
+    'id',        v_itinerary.id,
+    'title',     v_itinerary.title,
+    'plan_date', v_itinerary.plan_date,
+    'notes',     v_itinerary.notes,
+    'items', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'id',               it.id,
+               'business_ref',     it.business_ref,
+               'custom_title',     it.custom_title,
+               'start_time',       it.start_time,
+               'duration_minutes', it.duration_minutes,
+               'position',         it.position,
+               'notes',            it.notes,
+               'business_snapshot',it.business_snapshot
+             ) order by it.position, it.start_time nulls last)
+      from public.itinerary_items it
+      where it.itinerary_id = v_itinerary.id
+    ), '[]'::jsonb),
+    -- First name only. Never the email column.
+    'participants', coalesce((
+      select jsonb_agg(jsonb_build_object('name', split_part(p.name, ' ', 1))
+                       order by p.created_at)
+      from public.itinerary_participants p
+      where p.itinerary_id = v_itinerary.id
+    ), '[]'::jsonb)
+  ) into v_result;
+
+  return v_result;
+end;
+$$;
+
+-- Callable by anyone holding a link, but it reveals nothing without the token.
+grant execute on function public.get_shared_itinerary(text) to anon, authenticated;
+
+-- Rotating the token instantly revokes every previously shared link.
+create or replace function public.rotate_itinerary_share_token(p_itinerary_id uuid)
+returns text
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_token text;
+begin
+  if auth.uid() is null then
+    raise exception 'Not authenticated';
+  end if;
+
+  update public.itineraries
+     set share_token = encode(gen_random_bytes(16), 'hex'),
+         updated_at  = now()
+   where id = p_itinerary_id
+     and user_id = auth.uid()   -- owner-only, enforced inside the definer
+  returning share_token into v_token;
+
+  if not found then
+    raise exception 'Itinerary not found';
+  end if;
+
+  return v_token;
+end;
+$$;
+
+grant execute on function public.rotate_itinerary_share_token(uuid) to authenticated;

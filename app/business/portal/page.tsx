@@ -43,7 +43,7 @@ export default function BusinessPortalPage() {
       setSubscription(s)
       setError(null)
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load your venues.")
+      setError(e instanceof Error ? e.message : "Could not load your businesses.")
     } finally {
       setLoading(false)
     }
@@ -68,8 +68,8 @@ export default function BusinessPortalPage() {
       <Shell onOpenAuth={() => setAuthOpen(true)}>
         <EmptyState
           icon={<Store className="h-7 w-7 text-muted-foreground" />}
-          title="Manage your venue on LookMeUp"
-          body="Sign in with a business account to claim your venue, keep its details accurate and add booking links."
+          title="Manage your business on LookMeUp"
+          body="Sign in with a business account to claim your business, keep its details accurate and add booking links."
           action={
             <button
               onClick={() => setAuthOpen(true)}
@@ -90,9 +90,9 @@ export default function BusinessPortalPage() {
         <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div className="flex flex-col gap-2">
             <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Business portal</p>
-            <h1 className="font-serif text-4xl sm:text-5xl text-foreground text-balance">Your venues</h1>
+            <h1 className="font-serif text-4xl sm:text-5xl text-foreground text-balance">Your businesses</h1>
             <p className="text-muted-foreground max-w-xl leading-relaxed">
-              Claim a venue to manage how it appears across LookMeUp, add booking links and keep your details current.
+              Claim a business to manage how it appears across LookMeUp, add booking links and keep your details current.
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -107,7 +107,7 @@ export default function BusinessPortalPage() {
               className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-foreground text-background text-sm font-medium transition-all hover:bg-foreground/90 hover:scale-[1.02] active:scale-95"
             >
               <Plus className="h-4 w-4" />
-              Claim a venue
+              Claim a business
             </button>
           </div>
         </header>
@@ -117,7 +117,7 @@ export default function BusinessPortalPage() {
             <ShieldCheck className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
             <p className="text-sm text-muted-foreground leading-relaxed">
               This account is set up as a personal account. You can still submit a claim — approval is what grants
-              access to editing a venue.
+              access to editing a business.
             </p>
           </div>
         )}
@@ -145,14 +145,14 @@ export default function BusinessPortalPage() {
         ) : claims.length === 0 ? (
           <EmptyState
             icon={<Store className="h-7 w-7 text-muted-foreground" />}
-            title="No venues claimed yet"
-            body="Claim your venue to manage its listing. We verify ownership before granting edit access."
+            title="No businesses claimed yet"
+            body="Claim your business to manage its listing. We verify ownership before granting edit access."
             action={
               <button
                 onClick={() => setShowClaimForm(true)}
                 className="px-6 py-3 rounded-full bg-foreground text-background text-sm font-medium transition-all hover:bg-foreground/90 hover:scale-[1.02] active:scale-95"
               >
-                Claim a venue
+                Claim a business
               </button>
             }
           />
@@ -225,7 +225,7 @@ function ClaimRow({
               </p>
               <p className="text-sm text-muted-foreground leading-relaxed max-w-prose">
                 {claim.status === "pending"
-                  ? "We are checking that you represent this venue. Editing unlocks once the claim is approved — this protects venues from being edited by someone who does not own them."
+                  ? "We are checking that you represent this business. Editing unlocks once the claim is approved — this protects businesses from being edited by someone who does not own them."
                   : "This claim was not approved. If you believe this is an error, submit a new claim with clearer evidence of ownership."}
               </p>
               {claim.evidence_notes && (
@@ -269,7 +269,7 @@ function ClaimForm({ onCancel, onSubmitted }: { onCancel: () => void; onSubmitte
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!businessName.trim() || !businessRef.trim()) {
-      setError("Venue name and reference are both required.")
+      setError("Business name and reference are both required.")
       return
     }
     setSubmitting(true)
@@ -287,23 +287,23 @@ function ClaimForm({ onCancel, onSubmitted }: { onCancel: () => void; onSubmitte
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-5 p-6 rounded-3xl border border-border/60 bg-card">
       <div className="flex flex-col gap-1">
-        <h2 className="font-serif text-2xl text-foreground">Claim a venue</h2>
+        <h2 className="font-serif text-2xl text-foreground">Claim a business</h2>
         <p className="text-sm text-muted-foreground leading-relaxed">
-          Tell us which venue you represent. Claims start as pending and are reviewed before editing unlocks.
+          Tell us which business you represent. Claims start as pending and are reviewed before editing unlocks.
         </p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Venue name" required value={businessName} onChange={setBusinessName} placeholder="Blacklock Soho" />
+        <Field label="Business name" required value={businessName} onChange={setBusinessName} placeholder="Blacklock Soho" />
         <Field
-          label="Google Place ID or venue ID"
+          label="Google Place ID or business ID"
           required
           value={businessRef}
           onChange={setBusinessRef}
           placeholder="ChIJ..."
-          hint="Find this on your venue page URL."
+          hint="Find this on your business page URL."
         />
-        <Field label="Contact email" type="email" value={contactEmail} onChange={setContactEmail} placeholder="you@venue.co.uk" />
+        <Field label="Contact email" type="email" value={contactEmail} onChange={setContactEmail} placeholder="you@business.co.uk" />
         <Field label="Contact phone" value={contactPhone} onChange={setContactPhone} placeholder="020 1234 5678" />
       </div>
 
@@ -316,7 +316,7 @@ function ClaimForm({ onCancel, onSubmitted }: { onCancel: () => void; onSubmitte
           value={evidenceNotes}
           onChange={(e) => setEvidenceNotes(e.target.value)}
           rows={3}
-          placeholder="Your role, company name, or anything that helps us verify you represent this venue."
+          placeholder="Your role, company name, or anything that helps us verify you represent this business."
           className="px-4 py-3 rounded-2xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground/70 outline-none transition-colors focus:border-foreground/40 resize-none"
         />
       </div>
@@ -363,7 +363,7 @@ function ProfileEditor({ claim }: { claim: BusinessClaim }) {
         if (!active) return
         setDraft(toDraft(profile))
       } catch (e) {
-        if (active) setError(e instanceof Error ? e.message : "Could not load venue details.")
+        if (active) setError(e instanceof Error ? e.message : "Could not load business details.")
       } finally {
         if (active) setLoading(false)
       }
@@ -402,7 +402,7 @@ function ProfileEditor({ claim }: { claim: BusinessClaim }) {
 
   return (
     <form onSubmit={handleSave} className="flex flex-col gap-6">
-      <Section title="How your venue reads">
+      <Section title="How your business reads">
         <Field label="Tagline" value={draft.tagline ?? ""} onChange={(v) => set("tagline", v)} placeholder="Chophouse in the heart of Soho" />
         <div className="flex flex-col gap-2 sm:col-span-2">
           <label htmlFor={`desc-${claim.id}`} className="text-sm font-medium text-foreground">
@@ -414,7 +414,7 @@ function ProfileEditor({ claim }: { claim: BusinessClaim }) {
             onChange={(e) => set("description", e.target.value)}
             rows={4}
             className="px-4 py-3 rounded-2xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground/70 outline-none transition-colors focus:border-foreground/40 resize-none"
-            placeholder="What makes this venue worth a visit."
+            placeholder="What makes this business worth a visit."
           />
         </div>
       </Section>
@@ -428,7 +428,7 @@ function ProfileEditor({ claim }: { claim: BusinessClaim }) {
 
       <Section title="Contact">
         <Field label="Phone" value={draft.contact_phone ?? ""} onChange={(v) => set("contact_phone", v)} placeholder="020 1234 5678" />
-        <Field label="Email" type="email" value={draft.contact_email ?? ""} onChange={(v) => set("contact_email", v)} placeholder="hello@venue.co.uk" />
+        <Field label="Email" type="email" value={draft.contact_email ?? ""} onChange={(v) => set("contact_email", v)} placeholder="hello@business.co.uk" />
       </Section>
 
       <Section title="Social">

@@ -20,6 +20,9 @@ interface Plan {
   name: string
   price: string
   cadence: string
+  /** Optional annual alternative, shown beneath the monthly price. */
+  annualPrice?: string
+  annualCadence?: string
   summary: string
   features: string[]
   /** Gold is not purchasable yet - it collects a waitlist instead. */
@@ -33,26 +36,30 @@ const PLANS: Plan[] = [
     name: "Bronze",
     price: "Free",
     cadence: "always",
-    summary: "Claim your venue and keep the essentials accurate.",
+    summary: "Get discovered and take control of your LookMeUp presence.",
     features: [
-      "Claim and verify your venue",
+      "Claim and verify your business",
       "Keep name, address and hours correct",
       "Food hygiene rating displayed",
-      "One booking or menu link",
+      "Description, tagline and contact details",
+      "Booking, menu and social links",
     ],
   },
   {
     tier: "silver",
     name: "Silver",
-    price: "£19",
+    price: "£39",
     cadence: "per month",
-    summary: "Stand out in results and tell your full story.",
+    /** £390/yr is two months free versus paying monthly. */
+    annualPrice: "£390",
+    annualCadence: "per year",
+    summary: "Turn discovery into customers.",
     features: [
       "Everything in Bronze",
-      "Full description and tagline",
-      "All booking, menu and ordering links",
-      "Social profiles on your listing",
-      "Priority placement in relevant searches",
+      "Enhanced profile with richer content",
+      "Take bookings inside LookMeUp",
+      "Profile views, saves and click analytics",
+      "Priority visibility in relevant searches",
     ],
     featured: true,
   },
@@ -61,13 +68,13 @@ const PLANS: Plan[] = [
     name: "Gold",
     price: "Coming soon",
     cadence: "",
-    summary: "Understand your audience with listing analytics.",
+    summary: "Grow your business with LookMeUp.",
     features: [
       "Everything in Silver",
-      "Views, saves and click-through analytics",
-      "Itinerary inclusion insights",
-      "Search terms that surfaced your venue",
-      "Early access to new merchant tools",
+      "Website, domain and trademark support",
+      "Social media and campaign support",
+      "Enhanced analytics and reporting",
+      "Dedicated account support",
     ],
     waitlist: true,
   },
@@ -129,7 +136,7 @@ export default function PricingPage() {
             Be found by people looking for you
           </h1>
           <p className="text-muted-foreground max-w-xl leading-relaxed text-pretty">
-            Claiming your venue is free. Upgrade when you want richer presentation and, soon, insight into how
+            Claiming your business is free. Upgrade when you want richer presentation and, soon, insight into how
             people discover you.
           </p>
         </header>
@@ -164,6 +171,13 @@ export default function PricingPage() {
                   <div className="flex items-baseline gap-2">
                     <span className="font-serif text-4xl text-foreground">{plan.price}</span>
                     {plan.cadence && <span className="text-sm text-muted-foreground">{plan.cadence}</span>}
+                  </div>
+                  {/* Annual alternative kept to one quiet line so the card
+                      stays uncluttered. */}
+                  <div className={cn("mb-4", !plan.annualPrice && "hidden")}>
+                    <span className="text-xs text-muted-foreground">
+                      {plan.annualPrice} {plan.annualCadence} &middot; two months free
+                    </span>
                   </div>
                   <p className="text-sm text-muted-foreground leading-relaxed">{plan.summary}</p>
                 </div>
@@ -202,7 +216,7 @@ export default function PricingPage() {
                           : "border border-border text-foreground hover:bg-secondary/80",
                       )}
                     >
-                      {isCurrent ? "Manage venue" : plan.tier === "bronze" ? "Claim your venue" : "Choose Silver"}
+                      {isCurrent ? "Manage business" : plan.tier === "bronze" ? "Claim your business" : "Choose Silver"}
                     </Link>
                   )}
                 </div>

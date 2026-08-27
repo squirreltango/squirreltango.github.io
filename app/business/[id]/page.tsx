@@ -4,7 +4,7 @@ import { use } from "react"
 import useSWR from "swr"
 import Link from "next/link"
 import { ArrowLeft, Star, MapPin, Heart, Share2, Instagram, Building2, TrendingUp, ExternalLink, Loader2 } from "lucide-react"
-import { businesses as mockBusinesses } from "@/lib/data"
+
 import type { Business } from "@/lib/types/business"
 import {
   getBusinessPhotos,
@@ -67,21 +67,19 @@ export default function BusinessDetailPage({ params }: { params: Promise<{ id: s
     { revalidateOnFocus: false }
   )
 
-  // Fallback to mock data if Supabase returns nothing. The API responds with
-  // an `{ error }` object for non-UUID ids (all curated mock ids), and that
-  // object is truthy - so require a real business shape before trusting it,
-  // otherwise the fallback is skipped and `business.media` blows up.
-  const mockBusiness = mockBusinesses.find((b) => b.id === id)
+  // Live provider data only - no curated/seed fallback. The API responds with
+  // an `{ error }` object for unknown ids, and that object is truthy, so we
+  // require a real business shape before trusting it.
   const isBusinessShape = (value: unknown): value is Business =>
     typeof value === "object" && value !== null && "media" in value
-  const business = isBusinessShape(supabaseBusiness) ? supabaseBusiness : mockBusiness
+  const business = isBusinessShape(supabaseBusiness) ? supabaseBusiness : undefined
 
   if (!isLoading && !business) {
     notFound()
   }
 
   // Show loading skeleton while fetching
-  if (isLoading && !mockBusiness) {
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">

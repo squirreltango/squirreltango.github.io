@@ -1,7 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
-import { businesses } from "@/lib/data/businesses"
-import type { Business } from "@/lib/types/business"
+
 
 // New-model schema. `IF NOT EXISTS` guards a fresh install; the `ALTER TABLE`
 // statements migrate an existing legacy table by adding the new columns
@@ -47,32 +46,6 @@ DROP POLICY IF EXISTS "Allow public read access" ON businesses;
 CREATE POLICY "Allow public read access" ON businesses FOR SELECT USING (true);
 `
 
-// Transform a normalised Business into a snake_case row for insertion.
-function toRow(business: Business) {
-  return {
-    source: business.source,
-    external_ids: business.externalIds ?? {},
-    name: business.name,
-    category: business.category,
-    subcategory: business.subcategory ?? null,
-    description: business.description ?? null,
-    location: business.location,
-    media: business.media,
-    rating: business.rating,
-    provider_ratings: business.providerRatings,
-    price_level: business.priceLevel ?? null,
-    tags: business.tags,
-    amenities: business.amenities,
-    opening_hours: business.openingHours,
-    contact: business.contact,
-    reviews: business.reviews,
-    flags: business.flags,
-  }
-}
-
-// Single source of truth: seed rows are derived from the curated dataset.
-const SEED_ROWS = businesses.map(toRow)
-
 export async function POST() {
   const supabase = await createClient()
 
@@ -86,27 +59,22 @@ export async function POST() {
       console.log("[v0] Table creation note:", createError.message)
     }
 
-    // Only seed when empty - never overwrite existing rows.
     const { count } = await supabase
       .from("businesses")
       .select("*", { count: "exact", head: true })
 
-    if (count && count > 0) {
-      return NextResponse.json({ message: "Database already seeded", count })
-    }
-
-    const { data, error: insertError } = await supabase
-      .from("businesses")
-      .insert(SEED_ROWS)
-      .select()
-
-    if (insertError) {
-      return NextResponse.json({ error: insertError.message }, { status: 500 })
-    }
-
+    // Seeding fabricated example businesses is DISABLED. This route used to
+    // insert the curated dataset (Dishoom et al), which then surfaced in
+    // discovery as if it were genuine live data - complete with invented
+    // ratings, review counts and Instagram follower figures.
+    //
+    // The table is now populated exclusively by the real ingestion pipeline
+    // (Google Places -> google_place_details -> fsa_hygiene_details), so this
+    // route only ensures the schema exists.
     return NextResponse.json({
-      message: "Database seeded successfully",
-      count: data?.length || 0,
+      message:
+        "Schema ready. Businesses are ingested from Google Places; no example data is seeded.",
+      count: count ?? 0,
     })
   } catch (err) {
     console.error("[v0] Setup error:", err)

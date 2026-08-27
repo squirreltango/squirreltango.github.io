@@ -1,6 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { isDemoEnabled, type DemoPersona } from "@/lib/demo/config"
 import { X, Mail, Lock, User, Eye, EyeOff, Store, Heart, Loader2, CheckCircle2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
@@ -65,6 +67,7 @@ export function AuthModal({
   defaultAccountType = "personal",
 }: AuthModalProps) {
   const { refreshProfile } = useAuth()
+  const router = useRouter()
   const [mode, setMode] = useState<Mode>("login")
   const [showPassword, setShowPassword] = useState(false)
   const [isAnimating, setIsAnimating] = useState(false)
@@ -77,6 +80,7 @@ export function AuthModal({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [demoLoading, setDemoLoading] = useState<DemoPersona | null>(null)
 
   useEffect(() => {
     if (!isOpen) return
@@ -164,6 +168,38 @@ export function AuthModal({
     }
   }
 
+  /**
+   * Preview-only demo sign-in. Sends just the persona; the server holds the
+   * password so no credential ever exists in client source.
+   */
+  async function handleDemoSignIn(persona: DemoPersona) {
+    if (demoLoading) return
+    setDemoLoading(persona)
+    setError(null)
+    setNotice(null)
+    try {
+      const res = await fetch("/api/demo/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ persona }),
+      })
+      const payload = (await res.json()) as { error?: string }
+      if (!res.ok) {
+        setError(payload.error ?? "Demo sign-in unavailable.")
+        return
+      }
+      await refreshProfile()
+      onClose()
+      // Land the business persona straight in the portal.
+      router.push(persona === "business" ? "/business/portal" : "/saved")
+      router.refresh()
+    } catch {
+      setError("Demo sign-in failed. Please try again.")
+    } finally {
+      setDemoLoading(null)
+    }
+  }
+
   const heading =
     mode === "login" ? "Welcome back" : mode === "signup" ? "Join LookMeUp" : "Reset your password"
   const subheading =
@@ -229,7 +265,7 @@ export function AuthModal({
                   {(
                     [
                       { value: "personal", label: "Personal", hint: "Save & plan", icon: Heart },
-                      { value: "business", label: "Business", hint: "Claim a venue", icon: Store },
+                      { value: "business", label: "Business", hint: "Claim a business", icon: Store },
                     ] as const
                   ).map(({ value, label, hint, icon: Icon }) => {
                     const active = accountType === value
@@ -339,6 +375,47 @@ export function AuthModal({
             {mode === "login" ? "Sign in" : mode === "signup" ? "Create account" : "Send reset link"}
           </button>
         </form>
+
+        {/* Preview/Development only. isDemoEnabled() is false in Production, so
+            this block does not render there and the API route 404s regardless. */}
+        {isDemoEnabled() && (
+          <div className="mt-6 pt-6 border-t border-border/50">
+            <p className="text-xs font-medium tracking-widest uppercase text-muted-foreground mb-3 text-center">
+              Preview testing
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              {(
+                [
+                  { persona: "individual", label: "Demo Individual", icon: Heart },
+                  { persona: "business", label: "Demo Business", icon: Store },
+                ] as const
+              ).map(({ persona, label, icon: Icon }) => (
+                <button
+                  key={persona}
+                  type="button"
+                  disabled={submitting || demoLoading !== null}
+                  onClick={() => handleDemoSignIn(persona)}
+                  className={cn(
+                    "flex items-center justify-center gap-2 py-3 px-3 rounded-xl",
+                    "border border-border/60 text-sm font-medium text-foreground",
+                    "transition-all duration-300 hover:bg-secondary/60 hover:border-border",
+                    "disabled:opacity-60 disabled:cursor-not-allowed",
+                  )}
+                >
+                  {demoLoading === persona ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Icon className="h-4 w-4" />
+                  )}
+                  <span>{label}</span>
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-3 text-center leading-relaxed">
+              Sample accounts for testing. Not available in production.
+            </p>
+          </div>
+        )}
 
         <div className="mt-8 space-y-3 text-center text-sm">
           {mode === "login" && (
