@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { createClient as createAdminClient } from "@supabase/supabase-js"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { DEMO_EMAILS, isDemoEnabled, type DemoPersona } from "@/lib/demo/config"
 
 /**
@@ -27,7 +27,7 @@ function demoPassword(): string | null {
   const explicit = process.env.DEMO_ACCOUNT_PASSWORD
   if (explicit && explicit.length >= 12) return explicit
 
-  const seed = process.env.service_role_secret
+  const seed = process.env.service_role_secret || process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!seed) return null
   // Deterministic so the account can be recreated and signed into repeatedly.
   return `demo!${seed.slice(-24)}`
@@ -65,18 +65,13 @@ export async function POST(request: Request) {
 
   // First run in this environment: provision the demo user with the service
   // role so it is email-confirmed and immediately usable.
-  const serviceKey = process.env.service_role_secret
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  if (!serviceKey || !url) {
+  const admin = createAdminClient()
+  if (!admin) {
     return NextResponse.json(
       { error: "Demo accounts need the service role secret to be provisioned." },
       { status: 503 },
     )
   }
-
-  const admin = createAdminClient(url, serviceKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  })
 
   const created = await admin.auth.admin.createUser({
     email,
@@ -95,16 +90,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: created.error.message }, { status: 500 })
   }
 
+  let userId = created.data?.user?.id
+
   if (created.error) {
     const { data: list } = await admin.auth.admin.listUsers()
     const existing = list?.users.find((u) => u.email === email)
     if (existing) {
       await admin.auth.admin.updateUserById(existing.id, { password })
+      // Reuse the existing id so the profile upsert below still runs.
+      userId = existing.id
     }
   }
 
   // Ensure the profile row carries the right account type for the portal.
-  const userId = created.data?.user?.id
   if (userId) {
     await admin.from("profiles").upsert(
       {

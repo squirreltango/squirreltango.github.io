@@ -18,6 +18,9 @@ import {
   type Subscription,
 } from "@/lib/business-portal/client"
 import { cn } from "@/lib/utils"
+import { capabilitiesFor, resolveTier, REQUIRED_TIER, type Tier } from "@/lib/business-portal/tiers"
+import { TierLockedSection } from "@/components/business/tier-locked-section"
+import { InstagramSection } from "@/components/business/instagram-section"
 
 export default function BusinessPortalPage() {
   const { user, loading: authLoading, isBusiness } = useAuth()
@@ -94,6 +97,9 @@ export default function BusinessPortalPage() {
             <p className="text-muted-foreground max-w-xl leading-relaxed">
               Claim a business to manage how it appears across LookMeUp, add booking links and keep your details current.
             </p>
+            <p className="text-sm text-foreground">
+              Claiming your business is free.
+            </p>
           </div>
           <div className="flex items-center gap-3">
             <Link
@@ -164,6 +170,7 @@ export default function BusinessPortalPage() {
                   claim={claim}
                   expanded={selectedClaim?.id === claim.id}
                   onToggle={() => setSelectedClaim(selectedClaim?.id === claim.id ? null : claim)}
+                  subscriptionTier={subscription?.tier ?? null}
                 />
               </li>
             ))}
@@ -188,12 +195,16 @@ function ClaimRow({
   claim,
   expanded,
   onToggle,
+  subscriptionTier,
 }: {
   claim: BusinessClaim
   expanded: boolean
   onToggle: () => void
+  subscriptionTier: string | null
 }) {
   const approved = claim.status === "approved"
+  // An approved claim with no subscription is Bronze: claiming is free.
+  const tier = resolveTier(subscriptionTier, approved)
 
   return (
     <div className="rounded-3xl border border-border/60 bg-card overflow-hidden transition-shadow hover:shadow-lg">
@@ -217,7 +228,7 @@ function ClaimRow({
       {expanded && (
         <div className="border-t border-border/60 p-5 bg-muted/30">
           {approved ? (
-            <ProfileEditor claim={claim} />
+            <ProfileEditor claim={claim} tier={tier} />
           ) : (
             <div className="flex flex-col gap-2">
               <p className="text-sm text-foreground font-medium">
@@ -348,7 +359,8 @@ function ClaimForm({ onCancel, onSubmitted }: { onCancel: () => void; onSubmitte
   )
 }
 
-function ProfileEditor({ claim }: { claim: BusinessClaim }) {
+function ProfileEditor({ claim, tier }: { claim: BusinessClaim; tier: Tier }) {
+  const caps = capabilitiesFor(tier)
   const [draft, setDraft] = useState<BusinessProfileDraft>({})
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -437,6 +449,38 @@ function ProfileEditor({ claim }: { claim: BusinessClaim }) {
         <Field label="X" value={draft.x_url ?? ""} onChange={(v) => set("x_url", v)} placeholder="https://x.com/" />
         <Field label="TikTok" value={draft.tiktok_url ?? ""} onChange={(v) => set("tiktok_url", v)} placeholder="https://tiktok.com/@" />
       </Section>
+
+      {/* Instagram account connection is a Silver capability. Bronze merchants
+          see what it unlocks; the preview is inert and never shows invented
+          follower figures. */}
+      {caps.instagramConnect ? (
+        <InstagramSection instagramUrl={draft.instagram_url} connection={null} />
+      ) : (
+        <TierLockedSection
+          title="Connect your Instagram account"
+          description="Show your latest posts and follower count on your listing, pulled live from Instagram."
+          requiredTier={REQUIRED_TIER.instagramConnect ?? "silver"}
+        >
+          <InstagramSection instagramUrl={draft.instagram_url} connection={null} />
+        </TierLockedSection>
+      )}
+
+      {/* Native bookings and analytics: Silver. */}
+      {!caps.nativeBookings && (
+        <TierLockedSection
+          title="Take bookings inside LookMeUp"
+          description="Let customers request a table without leaving your listing, and manage requests here."
+          requiredTier={REQUIRED_TIER.nativeBookings ?? "silver"}
+        />
+      )}
+
+      {!caps.analytics && (
+        <TierLockedSection
+          title="Profile analytics"
+          description="See how many people viewed, saved and clicked through from your listing."
+          requiredTier={REQUIRED_TIER.analytics ?? "silver"}
+        />
+      )}
 
       {error && (
         <p className="text-sm text-destructive" role="alert">

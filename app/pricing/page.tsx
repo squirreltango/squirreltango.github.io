@@ -117,7 +117,7 @@ export default function PricingPage() {
     try {
       await joinGoldWaitlist({ contactEmail: user.email ?? undefined })
       setOnWaitlist(true)
-      setMessage("You're on the Gold waitlist - we'll be in touch when analytics launch.")
+      setMessage("You're on the Gold waitlist - we'll be in touch when Gold launches.")
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not join the waitlist.")
     } finally {
@@ -136,8 +136,8 @@ export default function PricingPage() {
             Be found by people looking for you
           </h1>
           <p className="text-muted-foreground max-w-xl leading-relaxed text-pretty">
-            Claiming your business is free. Upgrade when you want richer presentation and, soon, insight into how
-            people discover you.
+            Claiming your business is free, and Bronze keeps it that way. Upgrade to Silver to take bookings and
+            see how people find you.
           </p>
         </header>
 
@@ -176,7 +176,7 @@ export default function PricingPage() {
                       stays uncluttered. */}
                   <div className={cn("mb-4", !plan.annualPrice && "hidden")}>
                     <span className="text-xs text-muted-foreground">
-                      {plan.annualPrice} {plan.annualCadence} &middot; two months free
+                      {plan.annualPrice} {plan.annualCadence} &nbsp;&middot;&nbsp; two months free
                     </span>
                   </div>
                   <p className="text-sm text-muted-foreground leading-relaxed">{plan.summary}</p>
@@ -238,8 +238,8 @@ export default function PricingPage() {
         )}
 
         <p className="mt-14 text-center text-sm text-muted-foreground max-w-xl mx-auto leading-relaxed">
-          Silver is billed monthly and can be cancelled at any time. Gold pricing will be confirmed before
-          launch — joining the waitlist does not commit you to anything.
+          Silver is £39 per month or £390 per year, and can be cancelled at any time. Gold pricing will be
+          confirmed before launch — joining the waitlist does not commit you to anything.
         </p>
       </div>
 
