@@ -35,7 +35,26 @@ import {
 } from "@/lib/itineraries/client"
 import { estimateLeg, type TravelLeg } from "@/lib/itineraries/transport"
 import { PlanRouteMap, type RouteStop } from "@/components/plans/plan-route-map"
+import { PlaceSearch } from "@/components/plans/place-search"
+import type { Business } from "@/lib/types/business"
+import type { SavedSnapshot } from "@/components/saved-places-provider"
 import { cn } from "@/lib/utils"
+
+/** Build an itinerary snapshot from a searched Business, keeping coordinates. */
+function snapshotFromBusiness(business: Business): SavedSnapshot {
+  return {
+    name: business.name,
+    category: business.category,
+    address: business.location?.address,
+    neighbourhood: business.location?.neighbourhood,
+    image: business.media?.hero ?? business.media?.images?.[0],
+    rating: business.rating?.overall,
+    reviewCount: business.rating?.reviewCount,
+    priceLevel: business.priceLevel,
+    lat: business.location?.coordinates?.lat,
+    lng: business.location?.coordinates?.lng,
+  }
+}
 
 const DURATION_OPTIONS = [
   { label: "30 min", value: 30 },
@@ -57,6 +76,7 @@ export default function PlanDetailPage() {
   const [addOpen, setAddOpen] = useState(false)
   const [customTitle, setCustomTitle] = useState("")
   const [copied, setCopied] = useState(false)
+  const [editingTitle, setEditingTitle] = useState(false)
   const [view, setView] = useState<"timeline" | "map">("timeline")
 
   const load = useCallback(async () => {
@@ -80,11 +100,18 @@ export default function PlanDetailPage() {
     void load()
   }, [user, authLoading, load])
 
+  // Refs already on the plan, used to dedupe both the saved-place chips and
+  // the live search results.
+  const existingRefs = useMemo(
+    () => new Set(items.map((i) => i.businessRef).filter(Boolean) as string[]),
+    [items],
+  )
+
   // Saved places not already on the plan are the candidates worth offering.
-  const candidates = useMemo(() => {
-    const used = new Set(items.map((i) => i.businessRef).filter(Boolean))
-    return saved.filter((s) => !used.has(s.businessRef))
-  }, [saved, items])
+  const candidates = useMemo(
+    () => saved.filter((s) => !existingRefs.has(s.businessRef)),
+    [saved, existingRefs],
+  )
 
   // Stops that have real coordinates, in visiting order, for the map.
   const routeStops = useMemo<RouteStop[]>(() => {
@@ -132,6 +159,19 @@ export default function PlanDetailPage() {
       itineraryId: planId,
       businessRef: ref,
       snapshot: source.snapshot,
+      position: items.length,
+    })
+    if (created) {
+      setItems((prev) => [...prev, created])
+      setAddOpen(false)
+    }
+  }
+
+  async function handleAddPlace(business: Business) {
+    const created = await addItem({
+      itineraryId: planId,
+      businessRef: business.id,
+      snapshot: snapshotFromBusiness(business),
       position: items.length,
     })
     if (created) {
@@ -206,6 +246,20 @@ export default function PlanDetailPage() {
     }
   }
 
+  async function handleRename(nextTitle: string) {
+    if (!plan) return
+    const trimmed = nextTitle.trim()
+    if (!trimmed || trimmed === plan.title) {
+      setEditingTitle(false)
+      return
+    }
+    const previous = plan.title
+    setPlan({ ...plan, title: trimmed })
+    setEditingTitle(false)
+    const ok = await updateItinerary(plan.id, { title: trimmed })
+    if (!ok) setPlan({ ...plan, title: previous })
+  }
+
   const shareUrl =
     plan?.isPublic && plan.shareToken && typeof window !== "undefined"
       ? `${window.location.origin}/plans/shared/${plan.shareToken}`
@@ -220,9 +274,31 @@ export default function PlanDetailPage() {
               <ArrowLeft className="h-5 w-5 text-foreground" />
               <span className="sr-only">Back to plans</span>
             </Link>
-            <h1 className="min-w-0 flex-1 truncate font-serif text-xl font-semibold text-foreground">
-              {plan?.title ?? "Plan"}
-            </h1>
+            {editingTitle && plan ? (
+              <input
+                autoFocus
+                defaultValue={plan.title}
+                aria-label="Plan name"
+                onBlur={(e) => void handleRename(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                    ;(e.target as HTMLInputElement).blur()
+                  } else if (e.key === "Escape") {
+                    setEditingTitle(false)
+                  }
+                }}
+                className="min-w-0 flex-1 rounded-lg border border-border bg-background px-2 py-1 font-serif text-xl font-semibold text-foreground focus:border-foreground focus:outline-none"
+              />
+            ) : (
+              <button
+                onClick={() => setEditingTitle(true)}
+                disabled={!plan}
+                title="Rename plan"
+                className="min-w-0 flex-1 truncate rounded-lg px-2 py-1 text-left font-serif text-xl font-semibold text-foreground transition-colors hover:bg-secondary/60"
+              >
+                {plan?.title ?? "Plan"}
+              </button>
+            )}
             {plan && (
               <button
                 onClick={() => void handleShare()}
@@ -435,33 +511,35 @@ export default function PlanDetailPage() {
               </button>
 
               {addOpen && (
-                <div className="mb-5">
-                  <p className="mb-2 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    <Heart className="h-3.5 w-3.5" aria-hidden="true" />
-                    From your saved places
-                  </p>
-                  {candidates.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">
-                      No saved places left to add.{" "}
-                      <Link href="/" className="underline">
-                        Find some
-                      </Link>
-                      .
+                <div className="mb-5 space-y-5">
+                  <div>
+                    <p className="mb-2 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
+                      Search for a place
                     </p>
-                  ) : (
-                    <div className="flex flex-wrap gap-2">
-                      {candidates.map((s) => (
-                        <button
-                          key={s.id}
-                          onClick={() => void handleAddSaved(s.businessRef)}
-                          className={cn(
-                            "rounded-full border border-border px-3 py-1.5 text-sm text-foreground",
-                            "transition-colors hover:bg-secondary/80",
-                          )}
-                        >
-                          {s.snapshot?.name ?? "Saved place"}
-                        </button>
-                      ))}
+                    <PlaceSearch onSelect={(b) => void handleAddPlace(b)} existingRefs={existingRefs} />
+                  </div>
+
+                  {candidates.length > 0 && (
+                    <div>
+                      <p className="mb-2 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        <Heart className="h-3.5 w-3.5" aria-hidden="true" />
+                        From your saved places
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {candidates.map((s) => (
+                          <button
+                            key={s.id}
+                            onClick={() => void handleAddSaved(s.businessRef)}
+                            className={cn(
+                              "rounded-full border border-border px-3 py-1.5 text-sm text-foreground",
+                              "transition-colors hover:bg-secondary/80",
+                            )}
+                          >
+                            {s.snapshot?.name ?? "Saved place"}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
