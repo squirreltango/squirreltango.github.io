@@ -30,8 +30,8 @@ import {
   type WebsiteConfig,
   type WebsiteDraft,
   type BusinessAnalytics,
-  type Tier,
 } from "@/lib/business-portal/client"
+import type { Tier } from "@/lib/business-portal/tiers"
 
 /**
  * Pluggable data layer for the business portal.
@@ -355,7 +355,10 @@ export function isPreviewEnvironment(): boolean {
   if (typeof window === "undefined") return false
   const host = window.location.hostname
   if (host === "localhost" || host === "127.0.0.1") return true
+  // v0 / Vercel preview + sandbox hosts. A real production custom domain
+  // matches none of these, so the panel never renders there.
   if (host.endsWith(".vusercontent.net")) return true
+  if (host.endsWith(".vercel.run")) return true
   if (host.endsWith(".vercel.app")) return true
   return false
 }

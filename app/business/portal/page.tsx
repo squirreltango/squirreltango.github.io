@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { Store, Plus, Check, Clock, X, ExternalLink, Loader2, ShieldCheck } from "lucide-react"
 import { Header } from "@/components/header"
@@ -9,8 +9,6 @@ import { useAuth } from "@/components/auth-provider"
 import {
   listClaims,
   submitClaim,
-  getProfileForClaim,
-  saveProfile,
   getSubscription,
   type BusinessClaim,
   type BusinessProfile,
@@ -18,12 +16,21 @@ import {
   type Subscription,
 } from "@/lib/business-portal/client"
 import { cn } from "@/lib/utils"
-import { capabilitiesFor, resolveTier, REQUIRED_TIER, type Tier } from "@/lib/business-portal/tiers"
+import { capabilitiesFor, resolveTier, REQUIRED_TIER, TIER_LABEL, type Tier } from "@/lib/business-portal/tiers"
+import {
+  PortalDataProvider,
+  usePortalData,
+  realPortalClient,
+  createPreviewClient,
+  previewClaim,
+  isPreviewEnvironment,
+} from "@/lib/business-portal/data-context"
 import { TierLockedSection } from "@/components/business/tier-locked-section"
 import { InstagramSection } from "@/components/business/instagram-section"
 import { BookingsSection } from "@/components/business/bookings-section"
 import { PromotionsSection } from "@/components/business/promotions-section"
 import { AnalyticsSection } from "@/components/business/analytics-section"
+import { WebsiteSection } from "@/components/business/website-section"
 
 export default function BusinessPortalPage() {
   const { user, loading: authLoading, isBusiness } = useAuth()
@@ -72,19 +79,24 @@ export default function BusinessPortalPage() {
   if (!user) {
     return (
       <Shell onOpenAuth={() => setAuthOpen(true)}>
-        <EmptyState
-          icon={<Store className="h-7 w-7 text-muted-foreground" />}
-          title="Manage your business on LookMeUp"
-          body="Sign in with a business account to claim your business, keep its details accurate and add booking links."
-          action={
-            <button
-              onClick={() => setAuthOpen(true)}
-              className="px-6 py-3 rounded-full bg-foreground text-background text-sm font-medium transition-all hover:bg-foreground/90 hover:scale-[1.02] active:scale-95"
-            >
-              Sign in
-            </button>
-          }
-        />
+        <div className="flex flex-col gap-10">
+          <EmptyState
+            icon={<Store className="h-7 w-7 text-muted-foreground" />}
+            title="Manage your business on LookMeUp"
+            body="Sign in with a business account to claim your business, keep its details accurate and add booking links."
+            action={
+              <button
+                onClick={() => setAuthOpen(true)}
+                className="px-6 py-3 rounded-full bg-foreground text-background text-sm font-medium transition-all hover:bg-foreground/90 hover:scale-[1.02] active:scale-95"
+              >
+                Sign in
+              </button>
+            }
+          />
+          {/* Preview is a no-auth testing aid, so it is offered here too.
+              The panel self-gates to preview environments after mount. */}
+          <PortalPreviewPanel />
+        </div>
         <AuthModal isOpen={authOpen} onClose={() => setAuthOpen(false)} defaultAccountType="business" />
       </Shell>
     )
@@ -93,6 +105,8 @@ export default function BusinessPortalPage() {
   return (
     <Shell onOpenAuth={() => setAuthOpen(true)}>
       <div className="flex flex-col gap-10">
+        <PortalPreviewPanel />
+
         <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div className="flex flex-col gap-2">
             <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Business portal</p>
@@ -185,6 +199,84 @@ export default function BusinessPortalPage() {
   )
 }
 
+/**
+ * Preview-only merchant sandbox.
+ *
+ * Renders the exact Bronze/Silver/Gold portal experience against a fully
+ * in-memory data client and a synthetic claim, so the merchant journey can be
+ * inspected without an approved claim or an active subscription. It is gated by
+ * `isPreviewEnvironment()` (never rendered on production hosts), everything it
+ * writes is discarded on reload, and it is visually labelled as a sandbox so it
+ * can never be mistaken for real business data.
+ */
+function PortalPreviewPanel() {
+  const [tier, setTier] = useState<Tier>("bronze")
+  const [open, setOpen] = useState(false)
+  // Evaluate the environment after mount: isPreviewEnvironment() reads
+  // window, which is unavailable during SSR/first render, so gating on it
+  // directly would keep the panel out of the DOM forever.
+  const [enabled, setEnabled] = useState(false)
+  useEffect(() => setEnabled(isPreviewEnvironment()), [])
+
+  // One preview client per tier, kept stable across re-renders so edits made in
+  // the sandbox survive until the tier changes or the page reloads.
+  const client = useMemo(() => createPreviewClient(tier), [tier])
+  const claim = useMemo(() => previewClaim(tier), [tier])
+  const previewTiers: Tier[] = ["bronze", "silver", "gold"]
+
+  if (!enabled) return null
+
+  return (
+    <section className="rounded-3xl border border-dashed border-amber-500/50 bg-amber-500/5 p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className="rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">
+            Preview
+          </span>
+          <div>
+            <h2 className="text-sm font-medium text-foreground">Merchant experience sandbox</h2>
+            <p className="text-xs text-muted-foreground">
+              Explore each plan&apos;s portal without a claim. Nothing here is saved or shown to customers.
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className="rounded-full border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-secondary/80"
+        >
+          {open ? "Hide preview" : "Open preview"}
+        </button>
+      </div>
+
+      {open && (
+        <div className="mt-5">
+          <div className="mb-4 inline-flex rounded-full bg-secondary p-1">
+            {previewTiers.map((t) => (
+              <button
+                key={t}
+                onClick={() => setTier(t)}
+                className={cn(
+                  "rounded-full px-4 py-1.5 text-sm font-medium transition-colors",
+                  tier === t ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {TIER_LABEL[t]}
+              </button>
+            ))}
+          </div>
+
+          <div className="rounded-2xl border border-border/60 bg-card p-5">
+            <PortalDataProvider client={client}>
+              {/* key forces a clean remount when the tier (and its client) change */}
+              <ProfileEditor key={tier} claim={claim} tier={tier} />
+            </PortalDataProvider>
+          </div>
+        </div>
+      )}
+    </section>
+  )
+}
+
 function Shell({ children, onOpenAuth }: { children: React.ReactNode; onOpenAuth: () => void }) {
   return (
     <main className="min-h-screen bg-background">
@@ -231,7 +323,9 @@ function ClaimRow({
       {expanded && (
         <div className="border-t border-border/60 p-5 bg-muted/30">
           {approved ? (
-            <ProfileEditor claim={claim} tier={tier} />
+            <PortalDataProvider client={realPortalClient}>
+              <ProfileEditor claim={claim} tier={tier} />
+            </PortalDataProvider>
           ) : (
             <div className="flex flex-col gap-2">
               <p className="text-sm text-foreground font-medium">
@@ -364,6 +458,7 @@ function ClaimForm({ onCancel, onSubmitted }: { onCancel: () => void; onSubmitte
 
 function ProfileEditor({ claim, tier }: { claim: BusinessClaim; tier: Tier }) {
   const caps = capabilitiesFor(tier)
+  const data = usePortalData()
   const [draft, setDraft] = useState<BusinessProfileDraft>({})
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -374,7 +469,7 @@ function ProfileEditor({ claim, tier }: { claim: BusinessClaim; tier: Tier }) {
     let active = true
     ;(async () => {
       try {
-        const profile = await getProfileForClaim(claim.id)
+        const profile = await data.getProfileForClaim(claim.id)
         if (!active) return
         setDraft(toDraft(profile))
       } catch (e) {
@@ -386,7 +481,7 @@ function ProfileEditor({ claim, tier }: { claim: BusinessClaim; tier: Tier }) {
     return () => {
       active = false
     }
-  }, [claim.id])
+  }, [claim.id, data])
 
   function set<K extends keyof BusinessProfileDraft>(key: K, value: string) {
     setDraft((d) => ({ ...d, [key]: value }))
@@ -398,7 +493,7 @@ function ProfileEditor({ claim, tier }: { claim: BusinessClaim; tier: Tier }) {
     setSaving(true)
     setError(null)
     try {
-      await saveProfile(claim, draft)
+      await data.saveProfile(claim, draft)
       setSaved(true)
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not save changes.")
@@ -490,6 +585,17 @@ function ProfileEditor({ claim, tier }: { claim: BusinessClaim; tier: Tier }) {
         />
       )}
 
+      {/* Website builder: Silver. A self-managed one-page microsite. */}
+      {caps.websiteBuilder ? (
+        <WebsiteSection claim={claim} />
+      ) : (
+        <TierLockedSection
+          title="Build your website"
+          description="Create a one-page microsite from your listing, with an optional custom domain."
+          requiredTier={REQUIRED_TIER.websiteBuilder ?? "silver"}
+        />
+      )}
+
       {/* Analytics: Silver. Real aggregated counts, never invented. */}
       {caps.analytics ? (
         <AnalyticsSection claim={claim} />
@@ -504,8 +610,8 @@ function ProfileEditor({ claim, tier }: { claim: BusinessClaim; tier: Tier }) {
       {/* Growth services: Gold. */}
       {!caps.growthServices && (
         <TierLockedSection
-          title="Grow with a website and campaigns"
-          description="Gold adds a hosted microsite, custom domain and trademark support, plus social and campaign help."
+          title="Managed growth with Gold"
+          description="Gold adds a custom domain and trademark support, plus hands-on social and campaign help from our team."
           requiredTier={REQUIRED_TIER.growthServices ?? "gold"}
         />
       )}

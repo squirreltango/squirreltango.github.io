@@ -48,8 +48,7 @@ export function TierLockedSection({
             <div
               className="pointer-events-none select-none opacity-45 blur-[1px]"
               aria-hidden="true"
-              // @ts-expect-error - inert is valid HTML, React types lag behind
-              inert=""
+              inert
             >
               {children}
             </div>
