@@ -7,7 +7,7 @@ import { CategoryFilter } from "@/components/category-filter"
 import { BusinessCard } from "@/components/business-card"
 import { MapView } from "@/components/map-view"
 import { AuthModal } from "@/components/auth-modal"
-import { businesses as mockBusinesses, categories } from "@/lib/data"
+import { categories } from "@/lib/data"
 import type { Business } from "@/lib/types/business"
 import { getHeadlineRating, getLocationLabel } from "@/lib/business/normalise-business"
 import { FilterBar, type SortOption, type FilterOptions } from "@/components/filter-bar"
@@ -16,6 +16,7 @@ import { AISearch } from "@/components/ai-search"
 import { Loader2, LayoutGrid, Map } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { isTrending, getVerifiedHygieneRating } from "@/lib/business/provenance"
+import { isAccommodationTags } from "@/lib/business/saved-categories"
 import { isStrongHygiene } from "@/lib/business/hygiene-display"
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json())
@@ -29,7 +30,7 @@ export default function HomePage() {
   const [filters, setFilters] = useState<FilterOptions>({
     trendingOnly: false,
     strongHygieneOnly: false,
-    hasBookingRating: false,
+    hotelsOnly: false,
   })
   const [isAISearching, setIsAISearching] = useState(false)
   const [aiSearchQuery, setAISearchQuery] = useState<string | null>(null)
@@ -57,22 +58,18 @@ export default function HomePage() {
     }
   )
 
-  // Use Supabase data if available, otherwise fallback to mock data
-  const baseBusinesses = useMemo(() => {
-    if (supabaseBusinesses && supabaseBusinesses.length > 0) {
-      return supabaseBusinesses
-    }
-    // Fallback to mock data if Supabase returns empty or errors
-    if (error || (supabaseBusinesses && supabaseBusinesses.length === 0)) {
-      return mockBusinesses
-    }
-    return mockBusinesses
-  }, [supabaseBusinesses, error])
+  // Live provider data only. There is deliberately NO curated/seed fallback:
+  // showing hardcoded example businesses (Dishoom et al) alongside genuine
+  // Google Places results presents fabricated ratings, reviews and Instagram
+  // figures as if they were real. An empty result is shown as an empty state.
+  const baseBusinesses = useMemo(() => supabaseBusinesses ?? [], [supabaseBusinesses])
 
   // Use AI search results if available, otherwise use base businesses
   const businesses = aiSearchResults || baseBusinesses
 
-  const isUsingMockData = !supabaseBusinesses || supabaseBusinesses.length === 0 || error
+  // True when the live pipeline returned nothing, so the UI can offer setup
+  // instead of silently rendering fake businesses.
+  const hasNoLiveData = !isLoading && baseBusinesses.length === 0
 
   // Setup database if needed
   const handleSetupDatabase = async () => {
@@ -136,7 +133,7 @@ export default function HomePage() {
     if (sortBy !== "relevance") count++
     if (filters.trendingOnly) count++
     if (filters.strongHygieneOnly) count++
-    if (filters.hasBookingRating) count++
+    if (filters.hotelsOnly) count++
     return count
   }, [sortBy, filters])
 
@@ -152,16 +149,18 @@ export default function HomePage() {
 
       const matchesCategory = activeCategory === "all" || business.category === activeCategory
 
-      // Provider-neutral: reads LookMeUp's own `flags.trending`, never the
-      // Instagram-shaped field. Same results, no implied Instagram source.
+      // Honest ranking heuristic over genuine Google rating + review volume,
+      // never a fabricated social/Instagram signal.
       const matchesTrending = !filters.trendingOnly || isTrending(business)
       // Scheme-aware and real-data-only: matches FHRS 4-5 or an FHIS pass,
       // never the fabricated seed number.
       const matchesFoodHygiene = !filters.strongHygieneOnly ||
         isStrongHygiene(getVerifiedHygieneRating(business))
-      const matchesBooking = !filters.hasBookingRating || business.providerRatings.bookingCom !== undefined
+      // Genuine accommodation only, detected from real Google Places "types"
+      // (lodging, hotel, hostel, ...). Never restaurants/salons.
+      const matchesHotels = !filters.hotelsOnly || isAccommodationTags(business.tags)
 
-      return matchesSearch && matchesCategory && matchesTrending && matchesFoodHygiene && matchesBooking
+      return matchesSearch && matchesCategory && matchesTrending && matchesFoodHygiene && matchesHotels
     })
 
     if (sortBy === "google_rating") {
@@ -196,11 +195,13 @@ export default function HomePage() {
 
       <main className="max-w-7xl mx-auto px-5 sm:px-8 py-10 sm:py-14">
         {/* Database Status Banner */}
-        {isUsingMockData && !isLoading && (
+        {hasNoLiveData && (
           <div className="mb-8 p-4 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-between gap-4 flex-wrap">
             <div>
-              <p className="text-sm font-medium text-amber-800">Using demo data</p>
-              <p className="text-xs text-amber-600">Connect to Supabase to use real data</p>
+              <p className="text-sm font-medium text-amber-800">No live businesses found</p>
+              <p className="text-xs text-amber-600">
+                Run setup to ingest genuine Google Places data for your area
+              </p>
             </div>
             <button
               onClick={handleSetupDatabase}
@@ -351,7 +352,7 @@ export default function HomePage() {
                 setFilters({
                   trendingOnly: false,
                   strongHygieneOnly: false,
-                  hasBookingRating: false,
+                  hotelsOnly: false,
                 })
                 setAISearchQuery(null)
                 setAISearchResults(null)

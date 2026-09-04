@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState, useCallback } from "react"
+import { useEffect, useRef, useState, useCallback, useMemo } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { Star, MapPin, X, Navigation, Heart, ExternalLink, Instagram, Building2, TrendingUp, Bookmark, ChevronLeft, ChevronRight, Loader2, Maximize2, Search } from "lucide-react"
@@ -12,6 +12,7 @@ import {
   getLocationLabel,
 } from "@/lib/business/normalise-business"
 import { formatPriceLevel } from "@/lib/business/category-mapping"
+import { useSavedPlaces } from "@/components/saved-places-provider"
 import { hasVerifiedInstagramData, isTrending } from "@/lib/business/provenance"
 import { HygieneBadgePill } from "@/components/hygiene-badge"
 import { cn } from "@/lib/utils"
@@ -40,7 +41,7 @@ export function MapView({ businesses, focusBusinessId }: MapViewProps) {
   const [selectedBusiness, setSelectedBusiness] = useState<Business | null>(null)
   const [hoveredBusiness, setHoveredBusiness] = useState<Business | null>(null)
   const [mapReady, setMapReady] = useState(false)
-  const [savedPlaces, setSavedPlaces] = useState<Set<string>>(new Set())
+  const { saved, toggleSave: persistSave } = useSavedPlaces()
   const [showSavedPanel, setShowSavedPanel] = useState(false)
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
@@ -58,19 +59,32 @@ export function MapView({ businesses, focusBusinessId }: MapViewProps) {
     focusAppliedRef.current = false
   }, [focusBusinessId])
 
-  // Toggle save
+  /**
+   * Saved-venue ids for this result set, derived from the persisted account
+   * data rather than local state, so hearts match the rest of the app.
+   *
+   * Saves are stored under the Google Place ID where one exists, but the map
+   * keys everything by `business.id`, so a venue counts as saved under either.
+   */
+  const savedPlaces = useMemo(() => {
+    const refs = new Set(saved.map((s) => s.businessRef))
+    const ids = new Set<string>()
+    for (const b of businesses) {
+      if (refs.has(b.id) || (b.externalIds?.googlePlaceId && refs.has(b.externalIds.googlePlaceId))) {
+        ids.add(b.id)
+      }
+    }
+    return ids
+  }, [saved, businesses])
+
+  // Persists through the provider. Takes an id to keep the existing call sites
+  // unchanged, then resolves the full business for the stored snapshot.
   const toggleSave = (businessId: string, e?: React.MouseEvent) => {
     e?.preventDefault()
     e?.stopPropagation()
-    setSavedPlaces((prev) => {
-      const next = new Set(prev)
-      if (next.has(businessId)) {
-        next.delete(businessId)
-      } else {
-        next.add(businessId)
-      }
-      return next
-    })
+    const business = businesses.find((b) => b.id === businessId)
+    if (!business) return
+    void persistSave(business)
   }
 
   /**

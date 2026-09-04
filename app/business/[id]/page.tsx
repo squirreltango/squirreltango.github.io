@@ -4,7 +4,7 @@ import { use, useState } from "react"
 import useSWR from "swr"
 import Link from "next/link"
 import { ArrowLeft, Star, MapPin, Heart, Share2, Instagram, Building2, TrendingUp, ExternalLink, Loader2 } from "lucide-react"
-import { businesses as mockBusinesses } from "@/lib/data"
+
 import type { Business } from "@/lib/types/business"
 import {
   getBusinessPhotos,
@@ -17,6 +17,7 @@ import { formatPriceLevel } from "@/lib/business/category-mapping"
 import { getBusinessFullAddress } from "@/lib/business/location"
 import { getAmenityChips } from "@/lib/business/amenities"
 import { PhotoGallery } from "@/components/photo-gallery"
+import { useSavedPlaces } from "@/components/saved-places-provider"
 import { hasVerifiedInstagramData } from "@/lib/business/provenance"
 import { HygieneBadgeDetail } from "@/components/hygiene-badge"
 import { BusinessPhotoCarousel } from "@/components/business-photo-carousel"
@@ -24,38 +25,17 @@ import { BusinessInfoRows } from "@/components/business-info-rows"
 import { cn } from "@/lib/utils"
 import { notFound } from "next/navigation"
 
-import type { BusinessReview } from "@/lib/types/business"
-
 const fetcher = (url: string) => fetch(url).then((res) => res.json())
 
-// Generic fallback reviews, only shown when a business has no reviews of its own.
-const fallbackReviews: BusinessReview[] = [
-  {
-    id: "fallback-1",
-    author: "Sarah Mitchell",
-    rating: 5,
-    date: "2 weeks ago",
-    text: "Absolutely loved this place! The atmosphere was perfect and the service was exceptional. Will definitely be coming back.",
-  },
-  {
-    id: "fallback-2",
-    author: "James Thompson",
-    rating: 4,
-    date: "1 month ago",
-    text: "Great experience overall. The location is wonderful and staff were very friendly. Only minor issue was the wait time.",
-  },
-  {
-    id: "fallback-3",
-    author: "Emily Roberts",
-    rating: 5,
-    date: "2 months ago",
-    text: "One of the best places I have been to in London. Highly recommend for anyone looking for a premium experience.",
-  },
-]
+// How many reviews to show before the "See more" control appears.
+const INITIAL_REVIEW_COUNT = 5
 
 export default function BusinessDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
-  const [isSaved, setIsSaved] = useState(false)
+  // Saves live in Supabase via the provider, so the state survives navigation
+  // and refreshes. The hook must sit above the early returns below.
+  const { isSaved: isSavedRef, toggleSave } = useSavedPlaces()
+  const [showAllReviews, setShowAllReviews] = useState(false)
 
   // Fetch from Supabase API
   const { data: supabaseBusiness, isLoading } = useSWR<Business>(
@@ -64,21 +44,19 @@ export default function BusinessDetailPage({ params }: { params: Promise<{ id: s
     { revalidateOnFocus: false }
   )
 
-  // Fallback to mock data if Supabase returns nothing. The API responds with
-  // an `{ error }` object for non-UUID ids (all curated mock ids), and that
-  // object is truthy - so require a real business shape before trusting it,
-  // otherwise the fallback is skipped and `business.media` blows up.
-  const mockBusiness = mockBusinesses.find((b) => b.id === id)
+  // Live provider data only - no curated/seed fallback. The API responds with
+  // an `{ error }` object for unknown ids, and that object is truthy, so we
+  // require a real business shape before trusting it.
   const isBusinessShape = (value: unknown): value is Business =>
     typeof value === "object" && value !== null && "media" in value
-  const business = isBusinessShape(supabaseBusiness) ? supabaseBusiness : mockBusiness
+  const business = isBusinessShape(supabaseBusiness) ? supabaseBusiness : undefined
 
   if (!isLoading && !business) {
     notFound()
   }
 
   // Show loading skeleton while fetching
-  if (isLoading && !mockBusiness) {
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
@@ -93,7 +71,16 @@ export default function BusinessDetailPage({ params }: { params: Promise<{ id: s
     return null
   }
 
-  const displayReviews = business.reviews && business.reviews.length > 0 ? business.reviews : fallbackReviews
+  // Prefer the Google Place ID so a save made from search results matches the
+  // same venue opened here.
+  const savedRef = business.externalIds?.googlePlaceId ?? business.id
+  const isSaved = isSavedRef(savedRef)
+
+  // Honest reviews: only genuine provider-returned reviews, in the order the
+  // provider returned them. No fabricated fallback, no positive-only filtering,
+  // no client-side sort by rating. Section is hidden entirely when empty.
+  const allReviews = business.reviews ?? []
+  const displayReviews = showAllReviews ? allReviews : allReviews.slice(0, INITIAL_REVIEW_COUNT)
 
   // Real Google photos for this place (deduplicated, capped at 10). Falls back
   // to the single hero so the header never renders empty.
@@ -123,7 +110,9 @@ export default function BusinessDetailPage({ params }: { params: Promise<{ id: s
           </Link>
           <div className="flex items-center gap-3">
             <button
-              onClick={() => setIsSaved(!isSaved)}
+              onClick={() => void toggleSave(business)}
+              aria-pressed={isSaved}
+              aria-label={isSaved ? `Remove ${business.name} from saved` : `Save ${business.name}`}
               className={cn(
                 "p-3 rounded-2xl bg-card/90 backdrop-blur-md shadow-lg",
                 "transition-all duration-300",
@@ -442,7 +431,9 @@ export default function BusinessDetailPage({ params }: { params: Promise<{ id: s
               style={{ animation: 'fadeInUp 0.4s ease-out 0.35s forwards', opacity: 0 }}
             >
               <button
-                onClick={() => setIsSaved(!isSaved)}
+              onClick={() => void toggleSave(business)}
+              aria-pressed={isSaved}
+              aria-label={isSaved ? `Remove ${business.name} from saved` : `Save ${business.name}`}
                 className={cn(
                   "flex items-center justify-center gap-2.5 py-4 rounded-2xl font-semibold",
                   "transition-all duration-300 active:scale-[0.98]",
@@ -483,20 +474,27 @@ export default function BusinessDetailPage({ params }: { params: Promise<{ id: s
           <PhotoGallery images={business.media.gallery} businessName={business.name} />
         )}
 
-        {/* Reviews Section */}
+        {/* Reviews Section - genuine Google reviews only. Hidden entirely when
+            the provider returned none, so no placeholder is ever shown. */}
+        {allReviews.length > 0 && (
         <div 
           className="mt-8 bg-card rounded-3xl shadow-lg border border-border/40 overflow-hidden"
           style={{ animation: 'fadeInUp 0.5s ease-out 0.65s forwards', opacity: 0 }}
         >
           <div className="p-6 sm:p-8 border-b border-border/60">
-            <div className="flex items-center justify-between">
-              <h2 className="text-2xl font-serif font-semibold text-foreground">Reviews</h2>
-              <button className={cn(
-                "text-sm font-semibold text-muted-foreground",
-                "transition-all duration-300 hover:text-foreground hover:underline underline-offset-2"
-              )}>
-                See all
-              </button>
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-white shadow-sm border border-border/50 flex items-center justify-center shrink-0">
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                  <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                  <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                  <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                </svg>
+              </div>
+              <div>
+                <h2 className="text-2xl font-serif font-semibold text-foreground leading-tight">Google reviews</h2>
+                <p className="text-xs text-muted-foreground">As returned by Google, unfiltered and unsorted</p>
+              </div>
             </div>
           </div>
           <div className="divide-y divide-border/60">
@@ -537,7 +535,21 @@ export default function BusinessDetailPage({ params }: { params: Promise<{ id: s
               </div>
             ))}
           </div>
+          {allReviews.length > INITIAL_REVIEW_COUNT && (
+            <div className="p-6 sm:p-8 border-t border-border/60">
+              <button
+                onClick={() => setShowAllReviews((prev) => !prev)}
+                className={cn(
+                  "w-full py-3 rounded-2xl bg-secondary/60 text-sm font-semibold text-foreground",
+                  "transition-all duration-300 hover:bg-secondary active:scale-[0.99]",
+                )}
+              >
+                {showAllReviews ? "Show fewer reviews" : `See more reviews (${allReviews.length - INITIAL_REVIEW_COUNT})`}
+              </button>
+            </div>
+          )}
         </div>
+        )}
       </div>
     </div>
   )

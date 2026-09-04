@@ -1,0 +1,783 @@
+"use client"
+
+import { useCallback, useEffect, useMemo, useState } from "react"
+import Link from "next/link"
+import { Store, Plus, Check, Clock, X, ExternalLink, Loader2, ShieldCheck } from "lucide-react"
+import { Header } from "@/components/header"
+import { AuthModal } from "@/components/auth-modal"
+import { useAuth } from "@/components/auth-provider"
+import {
+  listClaims,
+  submitClaim,
+  getSubscription,
+  type BusinessClaim,
+  type BusinessProfile,
+  type BusinessProfileDraft,
+  type Subscription,
+} from "@/lib/business-portal/client"
+import { cn } from "@/lib/utils"
+import { capabilitiesFor, resolveTier, REQUIRED_TIER, TIER_LABEL, type Tier } from "@/lib/business-portal/tiers"
+import {
+  PortalDataProvider,
+  usePortalData,
+  realPortalClient,
+  createPreviewClient,
+  previewClaim,
+  isPreviewEnvironment,
+} from "@/lib/business-portal/data-context"
+import { TierLockedSection } from "@/components/business/tier-locked-section"
+import { InstagramSection } from "@/components/business/instagram-section"
+import { BookingsSection } from "@/components/business/bookings-section"
+import { PromotionsSection } from "@/components/business/promotions-section"
+import { AnalyticsSection } from "@/components/business/analytics-section"
+import { WebsiteSection } from "@/components/business/website-section"
+
+export default function BusinessPortalPage() {
+  const { user, loading: authLoading, isBusiness } = useAuth()
+  const [authOpen, setAuthOpen] = useState(false)
+  const [claims, setClaims] = useState<BusinessClaim[]>([])
+  const [subscription, setSubscription] = useState<Subscription | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [showClaimForm, setShowClaimForm] = useState(false)
+  const [selectedClaim, setSelectedClaim] = useState<BusinessClaim | null>(null)
+
+  const refresh = useCallback(async () => {
+    if (!user) {
+      setClaims([])
+      setSubscription(null)
+      setLoading(false)
+      return
+    }
+    setLoading(true)
+    try {
+      const [c, s] = await Promise.all([listClaims(), getSubscription()])
+      setClaims(c)
+      setSubscription(s)
+      setError(null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not load your businesses.")
+    } finally {
+      setLoading(false)
+    }
+  }, [user])
+
+  useEffect(() => {
+    if (!authLoading) void refresh()
+  }, [authLoading, refresh])
+
+  if (authLoading) {
+    return (
+      <Shell onOpenAuth={() => setAuthOpen(true)}>
+        <div className="flex items-center justify-center py-24">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      </Shell>
+    )
+  }
+
+  if (!user) {
+    return (
+      <Shell onOpenAuth={() => setAuthOpen(true)}>
+        <div className="flex flex-col gap-10">
+          <EmptyState
+            icon={<Store className="h-7 w-7 text-muted-foreground" />}
+            title="Manage your business on LookMeUp"
+            body="Sign in with a business account to claim your business, keep its details accurate and add booking links."
+            action={
+              <button
+                onClick={() => setAuthOpen(true)}
+                className="px-6 py-3 rounded-full bg-foreground text-background text-sm font-medium transition-all hover:bg-foreground/90 hover:scale-[1.02] active:scale-95"
+              >
+                Sign in
+              </button>
+            }
+          />
+          {/* Preview is a no-auth testing aid, so it is offered here too.
+              The panel self-gates to preview environments after mount. */}
+          <PortalPreviewPanel />
+        </div>
+        <AuthModal isOpen={authOpen} onClose={() => setAuthOpen(false)} defaultAccountType="business" />
+      </Shell>
+    )
+  }
+
+  return (
+    <Shell onOpenAuth={() => setAuthOpen(true)}>
+      <div className="flex flex-col gap-10">
+        <PortalPreviewPanel />
+
+        <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div className="flex flex-col gap-2">
+            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Business portal</p>
+            <h1 className="font-serif text-4xl sm:text-5xl text-foreground text-balance">Your businesses</h1>
+            <p className="text-muted-foreground max-w-xl leading-relaxed">
+              Claim a business to manage how it appears across LookMeUp, add booking links and keep your details current.
+            </p>
+            <p className="text-sm text-foreground">
+              Claiming your business is free.
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/pricing"
+              className="px-5 py-2.5 rounded-full border border-border text-sm font-medium text-foreground transition-all hover:bg-secondary/80 active:scale-95"
+            >
+              {subscription ? `${titleCase(subscription.tier)} plan` : "View plans"}
+            </Link>
+            <button
+              onClick={() => setShowClaimForm((v) => !v)}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-foreground text-background text-sm font-medium transition-all hover:bg-foreground/90 hover:scale-[1.02] active:scale-95"
+            >
+              <Plus className="h-4 w-4" />
+              Claim a business
+            </button>
+          </div>
+        </header>
+
+        {!isBusiness && (
+          <div className="flex items-start gap-3 p-4 rounded-2xl bg-muted/60 border border-border/60">
+            <ShieldCheck className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              This account is set up as a personal account. You can still submit a claim — approval is what grants
+              access to editing a business.
+            </p>
+          </div>
+        )}
+
+        {showClaimForm && (
+          <ClaimForm
+            onCancel={() => setShowClaimForm(false)}
+            onSubmitted={async () => {
+              setShowClaimForm(false)
+              await refresh()
+            }}
+          />
+        )}
+
+        {error && (
+          <p className="text-sm text-destructive" role="alert">
+            {error}
+          </p>
+        )}
+
+        {loading ? (
+          <div className="flex items-center justify-center py-16">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : claims.length === 0 ? (
+          <EmptyState
+            icon={<Store className="h-7 w-7 text-muted-foreground" />}
+            title="No businesses claimed yet"
+            body="Claim your business to manage its listing. We verify ownership before granting edit access."
+            action={
+              <button
+                onClick={() => setShowClaimForm(true)}
+                className="px-6 py-3 rounded-full bg-foreground text-background text-sm font-medium transition-all hover:bg-foreground/90 hover:scale-[1.02] active:scale-95"
+              >
+                Claim a business
+              </button>
+            }
+          />
+        ) : (
+          <ul className="flex flex-col gap-4">
+            {claims.map((claim) => (
+              <li key={claim.id}>
+                <ClaimRow
+                  claim={claim}
+                  expanded={selectedClaim?.id === claim.id}
+                  onToggle={() => setSelectedClaim(selectedClaim?.id === claim.id ? null : claim)}
+                  subscriptionTier={subscription?.tier ?? null}
+                />
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <AuthModal isOpen={authOpen} onClose={() => setAuthOpen(false)} defaultAccountType="business" />
+    </Shell>
+  )
+}
+
+/**
+ * Preview-only merchant sandbox.
+ *
+ * Renders the real Bronze/Silver portal experience against a fully in-memory
+ * data client and a synthetic claim, so the merchant journey can be inspected
+ * without an approved claim or an active subscription. Gold is intentionally
+ * excluded - it is a managed/dedicated-agent proposition with no self-service
+ * portal to preview. Gated by `isPreviewEnvironment()` (never rendered on
+ * production), everything it writes is discarded on reload, and it is visually
+ * labelled as a sandbox so it can never be mistaken for real business data.
+ */
+function PortalPreviewPanel() {
+  const [tier, setTier] = useState<Tier>("bronze")
+  const [open, setOpen] = useState(false)
+  // Evaluate the environment after mount: isPreviewEnvironment() reads
+  // window, which is unavailable during SSR/first render, so gating on it
+  // directly would keep the panel out of the DOM forever.
+  const [enabled, setEnabled] = useState(false)
+  useEffect(() => setEnabled(isPreviewEnvironment()), [])
+
+  // One preview client per tier, kept stable across re-renders so edits made in
+  // the sandbox survive until the tier changes or the page reloads.
+  const client = useMemo(() => createPreviewClient(tier), [tier])
+  const claim = useMemo(() => previewClaim(tier), [tier])
+  // Bronze + Silver only. Gold is managed and has no self-service portal.
+  const previewTiers: Tier[] = ["bronze", "silver"]
+
+  if (!enabled) return null
+
+  return (
+    <section className="rounded-3xl border border-dashed border-amber-500/50 bg-amber-500/5 p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className="rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">
+            Preview
+          </span>
+          <div>
+            <h2 className="text-sm font-medium text-foreground">Preview business experience</h2>
+            <p className="text-xs text-muted-foreground">
+              Explore the Bronze and Silver portal without a claim. Nothing here is saved or shown to customers.
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className="rounded-full border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-secondary/80"
+        >
+          {open ? "Hide preview" : "Open preview"}
+        </button>
+      </div>
+
+      {open && (
+        <div className="mt-5">
+          <div className="mb-4 inline-flex rounded-full bg-secondary p-1">
+            {previewTiers.map((t) => (
+              <button
+                key={t}
+                onClick={() => setTier(t)}
+                className={cn(
+                  "rounded-full px-4 py-1.5 text-sm font-medium transition-colors",
+                  tier === t ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                View as {TIER_LABEL[t]}
+              </button>
+            ))}
+          </div>
+
+          <div className="rounded-2xl border border-border/60 bg-card p-5">
+            <PortalDataProvider client={client}>
+              {/* key forces a clean remount when the tier (and its client) change */}
+              <ProfileEditor key={tier} claim={claim} tier={tier} />
+            </PortalDataProvider>
+          </div>
+        </div>
+      )}
+    </section>
+  )
+}
+
+function Shell({ children, onOpenAuth }: { children: React.ReactNode; onOpenAuth: () => void }) {
+  return (
+    <main className="min-h-screen bg-background">
+      <Header onOpenAuth={onOpenAuth} />
+      <div className="max-w-5xl mx-auto px-6 lg:px-8 pt-28 pb-24">{children}</div>
+    </main>
+  )
+}
+
+function ClaimRow({
+  claim,
+  expanded,
+  onToggle,
+  subscriptionTier,
+}: {
+  claim: BusinessClaim
+  expanded: boolean
+  onToggle: () => void
+  subscriptionTier: string | null
+}) {
+  const approved = claim.status === "approved"
+  // An approved claim with no subscription is Bronze: claiming is free.
+  const tier = resolveTier(subscriptionTier, approved)
+
+  return (
+    <div className="rounded-3xl border border-border/60 bg-card overflow-hidden transition-shadow hover:shadow-lg">
+      <div className="flex items-center justify-between gap-4 p-5">
+        <div className="flex flex-col gap-1 min-w-0">
+          <h2 className="font-medium text-foreground truncate">{claim.business_name}</h2>
+          <p className="text-xs text-muted-foreground font-mono truncate">{claim.business_ref}</p>
+        </div>
+        <div className="flex items-center gap-3 shrink-0">
+          <StatusPill status={claim.status} />
+          <button
+            onClick={onToggle}
+            aria-expanded={expanded}
+            className="px-4 py-2 rounded-full border border-border text-sm font-medium text-foreground transition-all hover:bg-secondary/80 active:scale-95"
+          >
+            {approved ? (expanded ? "Close" : "Manage") : expanded ? "Close" : "Details"}
+          </button>
+        </div>
+      </div>
+
+      {expanded && (
+        <div className="border-t border-border/60 p-5 bg-muted/30">
+          {approved ? (
+            <PortalDataProvider client={realPortalClient}>
+              <ProfileEditor claim={claim} tier={tier} />
+            </PortalDataProvider>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <p className="text-sm text-foreground font-medium">
+                {claim.status === "pending" ? "Verification in progress" : "Claim not approved"}
+              </p>
+              <p className="text-sm text-muted-foreground leading-relaxed max-w-prose">
+                {claim.status === "pending"
+                  ? "We are checking that you represent this business. Editing unlocks once the claim is approved — this protects businesses from being edited by someone who does not own them."
+                  : "This claim was not approved. If you believe this is an error, submit a new claim with clearer evidence of ownership."}
+              </p>
+              {claim.evidence_notes && (
+                <p className="text-sm text-muted-foreground mt-2">
+                  <span className="text-foreground">Your notes: </span>
+                  {claim.evidence_notes}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function StatusPill({ status }: { status: BusinessClaim["status"] }) {
+  const map = {
+    approved: { label: "Approved", icon: Check, cls: "bg-foreground text-background" },
+    pending: { label: "Pending", icon: Clock, cls: "bg-muted text-muted-foreground" },
+    rejected: { label: "Rejected", icon: X, cls: "bg-destructive/10 text-destructive" },
+  } as const
+  const { label, icon: Icon, cls } = map[status]
+  return (
+    <span className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium", cls)}>
+      <Icon className="h-3.5 w-3.5" />
+      {label}
+    </span>
+  )
+}
+
+function ClaimForm({ onCancel, onSubmitted }: { onCancel: () => void; onSubmitted: () => void }) {
+  const [businessName, setBusinessName] = useState("")
+  const [businessRef, setBusinessRef] = useState("")
+  const [contactEmail, setContactEmail] = useState("")
+  const [contactPhone, setContactPhone] = useState("")
+  const [evidenceNotes, setEvidenceNotes] = useState("")
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!businessName.trim() || !businessRef.trim()) {
+      setError("Business name and reference are both required.")
+      return
+    }
+    setSubmitting(true)
+    setError(null)
+    try {
+      await submitClaim({ businessRef, businessName, contactEmail, contactPhone, evidenceNotes })
+      onSubmitted()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not submit the claim.")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="flex flex-col gap-5 p-6 rounded-3xl border border-border/60 bg-card">
+      <div className="flex flex-col gap-1">
+        <h2 className="font-serif text-2xl text-foreground">Claim a business</h2>
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          Tell us which business you represent. Claims start as pending and are reviewed before editing unlocks.
+        </p>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Business name" required value={businessName} onChange={setBusinessName} placeholder="Blacklock Soho" />
+        <Field
+          label="Google Place ID or business ID"
+          required
+          value={businessRef}
+          onChange={setBusinessRef}
+          placeholder="ChIJ..."
+          hint="Find this on your business page URL."
+        />
+        <Field label="Contact email" type="email" value={contactEmail} onChange={setContactEmail} placeholder="you@business.co.uk" />
+        <Field label="Contact phone" value={contactPhone} onChange={setContactPhone} placeholder="020 1234 5678" />
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <label htmlFor="evidence" className="text-sm font-medium text-foreground">
+          Evidence of ownership
+        </label>
+        <textarea
+          id="evidence"
+          value={evidenceNotes}
+          onChange={(e) => setEvidenceNotes(e.target.value)}
+          rows={3}
+          placeholder="Your role, company name, or anything that helps us verify you represent this business."
+          className="px-4 py-3 rounded-2xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground/70 outline-none transition-colors focus:border-foreground/40 resize-none"
+        />
+      </div>
+
+      {error && (
+        <p className="text-sm text-destructive" role="alert">
+          {error}
+        </p>
+      )}
+
+      <div className="flex items-center gap-3">
+        <button
+          type="submit"
+          disabled={submitting}
+          className="flex items-center gap-2 px-6 py-3 rounded-full bg-foreground text-background text-sm font-medium transition-all hover:bg-foreground/90 disabled:opacity-60 active:scale-95"
+        >
+          {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
+          Submit claim
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="px-6 py-3 rounded-full border border-border text-sm font-medium text-foreground transition-all hover:bg-secondary/80 active:scale-95"
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
+  )
+}
+
+function ProfileEditor({ claim, tier }: { claim: BusinessClaim; tier: Tier }) {
+  const caps = capabilitiesFor(tier)
+  const data = usePortalData()
+  const [draft, setDraft] = useState<BusinessProfileDraft>({})
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let active = true
+    ;(async () => {
+      try {
+        const profile = await data.getProfileForClaim(claim.id)
+        if (!active) return
+        setDraft(toDraft(profile))
+      } catch (e) {
+        if (active) setError(e instanceof Error ? e.message : "Could not load business details.")
+      } finally {
+        if (active) setLoading(false)
+      }
+    })()
+    return () => {
+      active = false
+    }
+  }, [claim.id, data])
+
+  function set<K extends keyof BusinessProfileDraft>(key: K, value: string) {
+    setDraft((d) => ({ ...d, [key]: value }))
+    setSaved(false)
+  }
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault()
+    setSaving(true)
+    setError(null)
+    try {
+      await data.saveProfile(claim, draft)
+      setSaved(true)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not save changes.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  // Profile completeness from the core fields that make a listing useful. Real
+  // and honest - it reflects exactly what the merchant has filled in.
+  const completenessFields: (keyof BusinessProfileDraft)[] = [
+    "tagline",
+    "description",
+    "website_url",
+    "contact_email",
+    "contact_phone",
+    "booking_url",
+    "instagram_url",
+  ]
+  const filledCount = completenessFields.filter((f) => Boolean((draft[f] as string)?.trim())).length
+  const completeness = Math.round((filledCount / completenessFields.length) * 100)
+
+  return (
+    <form onSubmit={handleSave} className="flex flex-col gap-6">
+      {/* Overview: plan status + profile completeness at a glance. */}
+      <div className="rounded-2xl border border-border/60 bg-secondary/30 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Overview</p>
+            <p className="mt-0.5 font-medium text-foreground">{claim.business_name}</p>
+          </div>
+          <span
+            className={cn(
+              "rounded-full px-3 py-1 text-xs font-semibold",
+              tier === "gold"
+                ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
+                : tier === "silver"
+                  ? "bg-slate-400/20 text-slate-700 dark:text-slate-300"
+                  : "bg-orange-500/15 text-orange-700 dark:text-orange-400",
+            )}
+          >
+            {TIER_LABEL[tier]} plan
+          </span>
+        </div>
+        <div className="mt-4">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>Profile completeness</span>
+            <span className="tabular-nums">{completeness}%</span>
+          </div>
+          <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-border/60">
+            <div
+              className="h-full rounded-full bg-foreground transition-all"
+              style={{ width: `${completeness}%` }}
+            />
+          </div>
+          {completeness < 100 && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              Add a tagline, description, contact details and links to complete your profile.
+            </p>
+          )}
+        </div>
+      </div>
+
+      <Section title="How your business reads">
+        <Field label="Tagline" value={draft.tagline ?? ""} onChange={(v) => set("tagline", v)} placeholder="Chophouse in the heart of Soho" />
+        <div className="flex flex-col gap-2 sm:col-span-2">
+          <label htmlFor={`desc-${claim.id}`} className="text-sm font-medium text-foreground">
+            Description
+          </label>
+          <textarea
+            id={`desc-${claim.id}`}
+            value={draft.description ?? ""}
+            onChange={(e) => set("description", e.target.value)}
+            rows={4}
+            className="px-4 py-3 rounded-2xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground/70 outline-none transition-colors focus:border-foreground/40 resize-none"
+            placeholder="What makes this business worth a visit."
+          />
+        </div>
+      </Section>
+
+      <Section title="Bookings and ordering">
+        <Field label="Booking link" value={draft.booking_url ?? ""} onChange={(v) => set("booking_url", v)} placeholder="https://" />
+        <Field label="Menu link" value={draft.menu_url ?? ""} onChange={(v) => set("menu_url", v)} placeholder="https://" />
+        <Field label="Order online" value={draft.order_url ?? ""} onChange={(v) => set("order_url", v)} placeholder="https://" />
+        <Field label="Website" value={draft.website_url ?? ""} onChange={(v) => set("website_url", v)} placeholder="https://" />
+      </Section>
+
+      <Section title="Contact">
+        <Field label="Phone" value={draft.contact_phone ?? ""} onChange={(v) => set("contact_phone", v)} placeholder="020 1234 5678" />
+        <Field label="Email" type="email" value={draft.contact_email ?? ""} onChange={(v) => set("contact_email", v)} placeholder="hello@business.co.uk" />
+      </Section>
+
+      <Section title="Social">
+        <Field label="Instagram" value={draft.instagram_url ?? ""} onChange={(v) => set("instagram_url", v)} placeholder="https://instagram.com/" />
+        <Field label="Facebook" value={draft.facebook_url ?? ""} onChange={(v) => set("facebook_url", v)} placeholder="https://facebook.com/" />
+        <Field label="X" value={draft.x_url ?? ""} onChange={(v) => set("x_url", v)} placeholder="https://x.com/" />
+        <Field label="TikTok" value={draft.tiktok_url ?? ""} onChange={(v) => set("tiktok_url", v)} placeholder="https://tiktok.com/@" />
+      </Section>
+
+      {/* Instagram account connection is a Silver capability. Bronze merchants
+          see what it unlocks; the preview is inert and never shows invented
+          follower figures. */}
+      {caps.instagramConnect ? (
+        <InstagramSection instagramUrl={draft.instagram_url} connection={null} />
+      ) : (
+        <TierLockedSection
+          title="Connect your Instagram account"
+          description="Show your latest posts and follower count on your listing, pulled live from Instagram."
+          requiredTier={REQUIRED_TIER.instagramConnect ?? "silver"}
+        >
+          <InstagramSection instagramUrl={draft.instagram_url} connection={null} />
+        </TierLockedSection>
+      )}
+
+      {/* Native bookings: Silver. Fully functional when unlocked. */}
+      {caps.nativeBookings ? (
+        <BookingsSection claim={claim} />
+      ) : (
+        <TierLockedSection
+          title="Take bookings inside LookMeUp"
+          description="Let customers request a table without leaving your listing, and manage requests here."
+          requiredTier={REQUIRED_TIER.nativeBookings ?? "silver"}
+        />
+      )}
+
+      {/* Promotions: Silver. */}
+      {caps.promotions ? (
+        <PromotionsSection claim={claim} />
+      ) : (
+        <TierLockedSection
+          title="Promote an offer"
+          description="Highlight a limited-time offer on your listing to draw people in."
+          requiredTier={REQUIRED_TIER.promotions ?? "silver"}
+        />
+      )}
+
+      {/* Website builder: Silver. A self-managed one-page microsite. */}
+      {caps.websiteBuilder ? (
+        <WebsiteSection claim={claim} />
+      ) : (
+        <TierLockedSection
+          title="Build your website"
+          description="Create a one-page microsite from your listing, with an optional custom domain."
+          requiredTier={REQUIRED_TIER.websiteBuilder ?? "silver"}
+        />
+      )}
+
+      {/* Analytics: Silver. Real aggregated counts, never invented. */}
+      {caps.analytics ? (
+        <AnalyticsSection claim={claim} />
+      ) : (
+        <TierLockedSection
+          title="Profile analytics"
+          description="See how many people viewed, saved and clicked through from your listing."
+          requiredTier={REQUIRED_TIER.analytics ?? "silver"}
+        />
+      )}
+
+      {/* Growth services: Gold. */}
+      {!caps.growthServices && (
+        <TierLockedSection
+          title="Managed growth with Gold"
+          description="Gold adds a custom domain and trademark support, plus hands-on social and campaign help from our team."
+          requiredTier={REQUIRED_TIER.growthServices ?? "gold"}
+        />
+      )}
+
+      {error && (
+        <p className="text-sm text-destructive" role="alert">
+          {error}
+        </p>
+      )}
+
+      <div className="flex items-center gap-3">
+        <button
+          type="submit"
+          disabled={saving}
+          className="flex items-center gap-2 px-6 py-3 rounded-full bg-foreground text-background text-sm font-medium transition-all hover:bg-foreground/90 disabled:opacity-60 active:scale-95"
+        >
+          {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+          Save changes
+        </button>
+        {saved && (
+          <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
+            <Check className="h-4 w-4" />
+            Saved
+          </span>
+        )}
+        <Link
+          href={`/business/${encodeURIComponent(claim.business_ref)}`}
+          className="ml-auto flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          View public page
+          <ExternalLink className="h-3.5 w-3.5" />
+        </Link>
+      </div>
+    </form>
+  )
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <fieldset className="flex flex-col gap-4">
+      <legend className="text-xs uppercase tracking-[0.16em] text-muted-foreground mb-2">{title}</legend>
+      <div className="grid gap-4 sm:grid-cols-2">{children}</div>
+    </fieldset>
+  )
+}
+
+function Field({
+  label,
+  value,
+  onChange,
+  placeholder,
+  type = "text",
+  required = false,
+  hint,
+}: {
+  label: string
+  value: string
+  onChange: (v: string) => void
+  placeholder?: string
+  type?: string
+  required?: boolean
+  hint?: string
+}) {
+  const id = `f-${label.toLowerCase().replace(/[^a-z]+/g, "-")}`
+  return (
+    <div className="flex flex-col gap-2">
+      <label htmlFor={id} className="text-sm font-medium text-foreground">
+        {label}
+        {required && <span className="text-muted-foreground"> *</span>}
+      </label>
+      <input
+        id={id}
+        type={type}
+        value={value}
+        required={required}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="px-4 py-3 rounded-2xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground/70 outline-none transition-colors focus:border-foreground/40"
+      />
+      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+    </div>
+  )
+}
+
+function EmptyState({
+  icon,
+  title,
+  body,
+  action,
+}: {
+  icon: React.ReactNode
+  title: string
+  body: string
+  action?: React.ReactNode
+}) {
+  return (
+    <div className="flex flex-col items-center text-center gap-4 py-20">
+      <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center">{icon}</div>
+      <h2 className="font-serif text-3xl text-foreground text-balance">{title}</h2>
+      <p className="text-muted-foreground max-w-md leading-relaxed text-pretty">{body}</p>
+      {action && <div className="mt-2">{action}</div>}
+    </div>
+  )
+}
+
+function toDraft(profile: BusinessProfile | null): BusinessProfileDraft {
+  if (!profile) return {}
+  const { id: _id, claim_id: _c, user_id: _u, business_ref: _r, ...rest } = profile
+  return rest
+}
+
+function titleCase(s: string) {
+  return s.charAt(0).toUpperCase() + s.slice(1)
+}

@@ -32,7 +32,7 @@ export type FilterOptions = {
    * means FHRS 4-5 OR an FHIS pass - see `isStrongHygiene`.
    */
   strongHygieneOnly: boolean
-  hasBookingRating: boolean
+  hotelsOnly: boolean
 }
 
 interface FilterBarProps {
@@ -75,7 +75,7 @@ export function FilterBar({
     onFiltersChange({
       trendingOnly: false,
       strongHygieneOnly: false,
-      hasBookingRating: false,
+      hotelsOnly: false,
     })
     onSortChange("relevance")
   }
@@ -180,9 +180,9 @@ export function FilterBar({
         )}
 
         <FilterPill
-          active={filters.hasBookingRating}
-          onClick={() => toggleFilter("hasBookingRating", !filters.hasBookingRating)}
-          icon={<Building2 className={cn("h-3.5 w-3.5", filters.hasBookingRating ? "text-background" : "text-blue-500")} />}
+          active={filters.hotelsOnly}
+          onClick={() => toggleFilter("hotelsOnly", !filters.hotelsOnly)}
+          icon={<Building2 className={cn("h-3.5 w-3.5", filters.hotelsOnly ? "text-background" : "text-blue-500")} />}
         >
           Hotels
         </FilterPill>
@@ -306,20 +306,20 @@ export function FilterBar({
                 )}
 
                 <button
-                  onClick={() => toggleFilter("hasBookingRating", !filters.hasBookingRating)}
+                  onClick={() => toggleFilter("hotelsOnly", !filters.hotelsOnly)}
                   className={cn(
                     "flex items-center justify-between w-full px-4 py-3 rounded-xl text-sm font-medium",
                     "transition-all duration-200",
-                    filters.hasBookingRating
+                    filters.hotelsOnly
                       ? "bg-foreground text-background"
                       : "bg-secondary/50 text-foreground hover:bg-secondary"
                   )}
                 >
                   <span className="flex items-center gap-2">
-                    <Building2 className={cn("h-4 w-4", filters.hasBookingRating ? "text-background" : "text-blue-500")} />
-                    Hotels with Booking.com Rating
+                    <Building2 className={cn("h-4 w-4", filters.hotelsOnly ? "text-background" : "text-blue-500")} />
+                    Hotels &amp; places to stay
                   </span>
-                  {filters.hasBookingRating && <Check className="h-4 w-4" />}
+                  {filters.hotelsOnly && <Check className="h-4 w-4" />}
                 </button>
               </div>
             </div>
@@ -358,11 +358,11 @@ export function FilterBar({
               </button>
             </span>
           )}
-          {filters.hasBookingRating && (
+          {filters.hotelsOnly && (
             <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-100 text-blue-700 text-xs font-medium">
               <Building2 className="h-3 w-3" />
               Hotels
-              <button onClick={() => toggleFilter("hasBookingRating", false)} className="ml-1 hover:text-blue-900">
+              <button onClick={() => toggleFilter("hotelsOnly", false)} className="ml-1 hover:text-blue-900">
                 <X className="h-3 w-3" />
               </button>
             </span>

@@ -25,7 +25,16 @@ async function fetchSupabaseBusinesses(): Promise<Business[]> {
       return []
     }
 
-    const businesses = (data as BusinessRow[] | null)?.map(mapSupabaseRowToBusiness) ?? []
+    const rows = (data as BusinessRow[] | null) ?? []
+
+    // Exclude legacy curated/seed rows from the consumer discovery experience.
+    // These carry fabricated ratings, review counts and Instagram figures, so
+    // presenting them beside genuine Google results would misrepresent them as
+    // real businesses. The rows are LEFT IN PLACE (not deleted) so existing
+    // saves, itinerary references and claims keep resolving.
+    const businesses = rows
+      .filter((row) => row.source !== "curated")
+      .map(mapSupabaseRowToBusiness)
 
     // Attach cached FSA hygiene ratings. Live Google venues already get this
     // inside fetchLiveBusinesses; curated rows need it here. Pure cache read -
@@ -42,17 +51,15 @@ export async function GET() {
   // is allowed to fail the request.
   const [curated, live] = await Promise.all([fetchSupabaseBusinesses(), fetchLiveBusinesses()])
 
-  // Curated rows win over live ones for the same venue, matched on Google place
-  // id where available and otherwise on a normalised name.
+  // LIVE data wins for the same business, matched on Google place id where
+  // available and otherwise on a normalised name. Live Google facts are the
+  // freshest and most trustworthy, so a stale stored row must never mask them.
   const identityKey = (business: Business) =>
     business.externalIds?.googlePlaceId ?? business.name.trim().toLowerCase()
 
   const merged = new Map<string, Business>()
   for (const business of curated) merged.set(identityKey(business), business)
-  for (const business of live) {
-    const key = identityKey(business)
-    if (!merged.has(key)) merged.set(key, business)
-  }
+  for (const business of live) merged.set(identityKey(business), business)
 
   const businesses = [...merged.values()]
 

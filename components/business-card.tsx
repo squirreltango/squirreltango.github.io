@@ -21,6 +21,7 @@ import {
 import { getTopAmenityChips } from "@/lib/business/amenities"
 import { hasVerifiedInstagramData, isTrending, getVerifiedHygieneRating } from "@/lib/business/provenance"
 import { HygieneBadgeCompact } from "@/components/hygiene-badge"
+import { useSavedPlaces } from "@/components/saved-places-provider"
 import { cn } from "@/lib/utils"
 
 interface BusinessCardProps {
@@ -133,7 +134,11 @@ function BadgeIcon({ variant }: { variant: BadgeVariant }) {
 }
 
 export function BusinessCard({ business, index = 0, searchQuery }: BusinessCardProps) {
-  const [isSaved, setIsSaved] = useState(false)
+  // Saves are account data persisted in Supabase, shared through the provider,
+  // so the heart stays filled across navigation, refreshes and devices.
+  const { isSaved: isSavedRef, toggleSave } = useSavedPlaces()
+  const savedRef = business.externalIds?.googlePlaceId ?? business.id
+  const isSaved = isSavedRef(savedRef)
   const [isHovered, setIsHovered] = useState(false)
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
   
@@ -268,8 +273,11 @@ export function BusinessCard({ business, index = 0, searchQuery }: BusinessCardP
           <button
             onClick={(e) => {
               e.preventDefault()
-              setIsSaved(!isSaved)
+              e.stopPropagation()
+              void toggleSave(business)
             }}
+            aria-pressed={isSaved}
+            aria-label={isSaved ? `Remove ${business.name} from saved` : `Save ${business.name}`}
             className={cn(
               "absolute top-4 right-4 p-2.5 rounded-full bg-card/90 backdrop-blur-md shadow-lg",
               "transition-all duration-300 ease-out",
