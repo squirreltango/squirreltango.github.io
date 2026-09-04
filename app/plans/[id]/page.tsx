@@ -33,8 +33,10 @@ import {
   type Itinerary,
   type ItineraryItem,
 } from "@/lib/itineraries/client"
-import { estimateLeg, type TravelLeg } from "@/lib/itineraries/transport"
-import { PlanRouteMap, type RouteStop } from "@/components/plans/plan-route-map"
+  import type { LatLng } from "@/lib/itineraries/transport"
+  import { DEFAULT_TRAVEL_MODE, isTravelMode, type TravelMode } from "@/lib/itineraries/routing"
+  import { PlanRouteMap, type RouteStop } from "@/components/plans/plan-route-map"
+  import { PlanLeg } from "@/components/plans/plan-leg"
 import { PlaceSearch } from "@/components/plans/place-search"
 import type { Business } from "@/lib/types/business"
 import type { SavedSnapshot } from "@/components/saved-places-provider"

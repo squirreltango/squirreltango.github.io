@@ -15,18 +15,27 @@ export interface RouteStop {
 
 interface PlanRouteMapProps {
   stops: RouteStop[]
+  /**
+   * Genuine route polylines between consecutive located stops, in visiting
+   * order (index i is the leg from stop i to stop i+1). A `null` entry means no
+   * real route was available for that leg, so it falls back to a dashed
+   * straight line. Optional; omitting it draws only dashed straight lines.
+   */
+  routePaths?: (([number, number][]) | null)[]
 }
 
 /**
- * Read-only route map for a plan. Draws a numbered pin per located stop and a
- * dashed line connecting them in visiting order. Uses the same free CARTO
- * Voyager basemap as the main discovery map. Leaflet is imported dynamically so
- * it never runs on the server or bloats the initial bundle.
+ * Read-only route map for a plan. Draws a numbered pin per located stop and,
+ * between consecutive stops, either a solid genuine route polyline (from the
+ * Google Routes API) or, when no route is available, a dashed straight line -
+ * so the map never implies a real route it does not have. Uses the same free
+ * CARTO Voyager basemap as the main discovery map. Leaflet is imported
+ * dynamically so it never runs on the server or bloats the initial bundle.
  *
  * Only stops that actually have coordinates are passed in; this component never
  * fabricates a location for a stop it cannot place.
  */
-export function PlanRouteMap({ stops }: PlanRouteMapProps) {
+export function PlanRouteMap({ stops, routePaths }: PlanRouteMapProps) {
   const container = useRef<HTMLDivElement>(null)
   const mapInstance = useRef<L.Map | null>(null)
   const leafletRef = useRef<LeafletType | null>(null)
@@ -123,14 +132,27 @@ export function PlanRouteMap({ stops }: PlanRouteMapProps) {
         .addTo(group)
     })
 
-    // Dashed line following visiting order. Only meaningful with 2+ points.
-    if (latlngs.length >= 2) {
-      L.polyline(latlngs, {
-        color: "#191919",
-        weight: 2.5,
-        opacity: 0.55,
-        dashArray: "6 8",
-      }).addTo(group)
+    // Connect consecutive stops. For each leg, draw the genuine route polyline
+    // when we have one; otherwise a dashed straight line, so the map is honest
+    // about which connections are real routes.
+    const boundsPoints: [number, number][] = [...latlngs]
+    for (let i = 0; i < latlngs.length - 1; i++) {
+      const realPath = routePaths?.[i]
+      if (realPath && realPath.length >= 2) {
+        L.polyline(realPath, {
+          color: "#191919",
+          weight: 3.5,
+          opacity: 0.8,
+        }).addTo(group)
+        boundsPoints.push(...realPath)
+      } else {
+        L.polyline([latlngs[i], latlngs[i + 1]], {
+          color: "#191919",
+          weight: 2.5,
+          opacity: 0.5,
+          dashArray: "6 8",
+        }).addTo(group)
+      }
     }
 
     group.addTo(map)
@@ -139,9 +161,9 @@ export function PlanRouteMap({ stops }: PlanRouteMapProps) {
     if (latlngs.length === 1) {
       map.setView(latlngs[0], 15)
     } else {
-      map.fitBounds(L.latLngBounds(latlngs), { padding: [48, 48], maxZoom: 15 })
+      map.fitBounds(L.latLngBounds(boundsPoints), { padding: [48, 48], maxZoom: 15 })
     }
-  }, [ready, stops])
+  }, [ready, stops, routePaths])
 
   return (
     <div
