@@ -31,6 +31,10 @@ export interface TierCapabilities {
   priorityPlacement: boolean
   /** Connect a genuine Instagram business account (Silver+). */
   instagramConnect: boolean
+  /** Create promotions and offers shown on the listing (Silver+). */
+  promotions: boolean
+  /** Build a hosted microsite from the listing (Gold). */
+  websiteBuilder: boolean
   /** Growth services: domains, trademarks, campaigns (Gold). */
   growthServices: boolean
 }
@@ -43,6 +47,8 @@ const CAPABILITIES: Record<Tier, TierCapabilities> = {
     analytics: false,
     priorityPlacement: false,
     instagramConnect: false,
+    promotions: false,
+    websiteBuilder: false,
     growthServices: false,
   },
   // Bronze is free and deliberately generous: an accurate listing benefits
@@ -54,6 +60,8 @@ const CAPABILITIES: Record<Tier, TierCapabilities> = {
     analytics: false,
     priorityPlacement: false,
     instagramConnect: false,
+    promotions: false,
+    websiteBuilder: false,
     growthServices: false,
   },
   silver: {
@@ -63,6 +71,8 @@ const CAPABILITIES: Record<Tier, TierCapabilities> = {
     analytics: true,
     priorityPlacement: true,
     instagramConnect: true,
+    promotions: true,
+    websiteBuilder: false,
     growthServices: false,
   },
   gold: {
@@ -72,6 +82,8 @@ const CAPABILITIES: Record<Tier, TierCapabilities> = {
     analytics: true,
     priorityPlacement: true,
     instagramConnect: true,
+    promotions: true,
+    websiteBuilder: true,
     growthServices: true,
   },
 }
@@ -105,6 +117,8 @@ export const REQUIRED_TIER: Partial<Record<keyof TierCapabilities, Tier>> = {
   analytics: "silver",
   priorityPlacement: "silver",
   instagramConnect: "silver",
+  promotions: "silver",
+  websiteBuilder: "gold",
   growthServices: "gold",
 }
 

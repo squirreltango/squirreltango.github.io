@@ -21,6 +21,9 @@ import { cn } from "@/lib/utils"
 import { capabilitiesFor, resolveTier, REQUIRED_TIER, type Tier } from "@/lib/business-portal/tiers"
 import { TierLockedSection } from "@/components/business/tier-locked-section"
 import { InstagramSection } from "@/components/business/instagram-section"
+import { BookingsSection } from "@/components/business/bookings-section"
+import { PromotionsSection } from "@/components/business/promotions-section"
+import { AnalyticsSection } from "@/components/business/analytics-section"
 
 export default function BusinessPortalPage() {
   const { user, loading: authLoading, isBusiness } = useAuth()
@@ -465,8 +468,10 @@ function ProfileEditor({ claim, tier }: { claim: BusinessClaim; tier: Tier }) {
         </TierLockedSection>
       )}
 
-      {/* Native bookings and analytics: Silver. */}
-      {!caps.nativeBookings && (
+      {/* Native bookings: Silver. Fully functional when unlocked. */}
+      {caps.nativeBookings ? (
+        <BookingsSection claim={claim} />
+      ) : (
         <TierLockedSection
           title="Take bookings inside LookMeUp"
           description="Let customers request a table without leaving your listing, and manage requests here."
@@ -474,11 +479,34 @@ function ProfileEditor({ claim, tier }: { claim: BusinessClaim; tier: Tier }) {
         />
       )}
 
-      {!caps.analytics && (
+      {/* Promotions: Silver. */}
+      {caps.promotions ? (
+        <PromotionsSection claim={claim} />
+      ) : (
+        <TierLockedSection
+          title="Promote an offer"
+          description="Highlight a limited-time offer on your listing to draw people in."
+          requiredTier={REQUIRED_TIER.promotions ?? "silver"}
+        />
+      )}
+
+      {/* Analytics: Silver. Real aggregated counts, never invented. */}
+      {caps.analytics ? (
+        <AnalyticsSection claim={claim} />
+      ) : (
         <TierLockedSection
           title="Profile analytics"
           description="See how many people viewed, saved and clicked through from your listing."
           requiredTier={REQUIRED_TIER.analytics ?? "silver"}
+        />
+      )}
+
+      {/* Growth services: Gold. */}
+      {!caps.growthServices && (
+        <TierLockedSection
+          title="Grow with a website and campaigns"
+          description="Gold adds a hosted microsite, custom domain and trademark support, plus social and campaign help."
+          requiredTier={REQUIRED_TIER.growthServices ?? "gold"}
         />
       )}
 
