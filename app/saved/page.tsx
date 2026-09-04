@@ -6,25 +6,33 @@ import { ArrowLeft, Heart, Bookmark } from "lucide-react"
 import { AuthModal } from "@/components/auth-modal"
 import { SavedPlaceCard } from "@/components/saved-place-card"
 import { useAuth } from "@/components/auth-provider"
-import { useSavedPlaces, DEFAULT_COLLECTION } from "@/components/saved-places-provider"
+import { useSavedPlaces } from "@/components/saved-places-provider"
+import { getSavedGroup, groupsPresent, type SavedGroupId } from "@/lib/business/saved-categories"
 import { cn } from "@/lib/utils"
 
 export default function SavedPage() {
   const [authModalOpen, setAuthModalOpen] = useState(false)
-  const [activeCollection, setActiveCollection] = useState<string>("all")
+  const [activeGroup, setActiveGroup] = useState<SavedGroupId | "all">("all")
   const { user, loading: authLoading } = useAuth()
-  const { saved, collections, loading } = useSavedPlaces()
+  const { saved, loading } = useSavedPlaces()
 
-  const filtered = useMemo(
-    () => (activeCollection === "all" ? saved : saved.filter((s) => s.collection === activeCollection)),
-    [saved, activeCollection],
+  // Automatic, real category groups derived from each place's genuine Google
+  // category/type data - never from its name. Only groups with saves appear.
+  const groups = useMemo(
+    () =>
+      groupsPresent(
+        saved.map((s) => ({ category: s.snapshot?.category, tags: s.snapshot?.tags })),
+      ),
+    [saved],
   )
 
-  const counts = useMemo(() => {
-    const map = new Map<string, number>()
-    for (const s of saved) map.set(s.collection, (map.get(s.collection) ?? 0) + 1)
-    return map
-  }, [saved])
+  const filtered = useMemo(
+    () =>
+      activeGroup === "all"
+        ? saved
+        : saved.filter((s) => getSavedGroup(s.snapshot?.category, s.snapshot?.tags) === activeGroup),
+    [saved, activeGroup],
+  )
 
   return (
     <div className="min-h-screen bg-background">
@@ -88,10 +96,10 @@ export default function SavedPage() {
           <>
             <div className="mb-6 flex flex-wrap items-center gap-2 border-b border-border/60 pb-6">
               <button
-                onClick={() => setActiveCollection("all")}
+                onClick={() => setActiveGroup("all")}
                 className={cn(
                   "rounded-full px-4 py-2 text-sm font-medium transition-colors",
-                  activeCollection === "all"
+                  activeGroup === "all"
                     ? "bg-foreground text-background"
                     : "text-muted-foreground hover:bg-secondary/80 hover:text-foreground",
                 )}
@@ -99,19 +107,19 @@ export default function SavedPage() {
                 All
                 <span className="ml-1.5 tabular-nums opacity-70">{saved.length}</span>
               </button>
-              {collections.map((c) => (
+              {groups.map((g) => (
                 <button
-                  key={c}
-                  onClick={() => setActiveCollection(c)}
+                  key={g.id}
+                  onClick={() => setActiveGroup(g.id)}
                   className={cn(
-                    "rounded-full px-4 py-2 text-sm font-medium capitalize transition-colors",
-                    activeCollection === c
+                    "rounded-full px-4 py-2 text-sm font-medium transition-colors",
+                    activeGroup === g.id
                       ? "bg-foreground text-background"
                       : "text-muted-foreground hover:bg-secondary/80 hover:text-foreground",
                   )}
                 >
-                  {c === DEFAULT_COLLECTION ? "General" : c}
-                  <span className="ml-1.5 tabular-nums opacity-70">{counts.get(c) ?? 0}</span>
+                  {g.label}
+                  <span className="ml-1.5 tabular-nums opacity-70">{g.count}</span>
                 </button>
               ))}
             </div>

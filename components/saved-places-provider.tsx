@@ -26,6 +26,14 @@ export interface SavedSnapshot {
   // estimate travel between stops. Never guessed or inferred.
   lat?: number
   lng?: number
+  // Genuine Google Places "types" (e.g. "restaurant", "lodging"). Captured so
+  // Saved can group a place accurately (Stays / Shopping / Things to do) rather
+  // than only by the coarse internal category. Optional: older saves omit it.
+  tags?: string[]
+  // Chosen travel mode FROM this stop to the next one on a plan ("walk",
+  // "cycle", "drive", "transit"). Stored on the earlier stop so the choice
+  // persists per leg. Only meaningful on itinerary items, not on saves.
+  travelModeToNext?: string
 }
 
 export interface SavedPlace {
@@ -68,6 +76,7 @@ function snapshotOf(business: Business): SavedSnapshot {
     priceLevel: business.priceLevel,
     lat: business.location?.coordinates?.lat,
     lng: business.location?.coordinates?.lng,
+    tags: business.tags && business.tags.length > 0 ? business.tags : undefined,
   }
 }
 

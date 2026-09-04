@@ -16,6 +16,7 @@ import { AISearch } from "@/components/ai-search"
 import { Loader2, LayoutGrid, Map } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { isTrending, getVerifiedHygieneRating } from "@/lib/business/provenance"
+import { isAccommodationTags } from "@/lib/business/saved-categories"
 import { isStrongHygiene } from "@/lib/business/hygiene-display"
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json())
@@ -29,7 +30,7 @@ export default function HomePage() {
   const [filters, setFilters] = useState<FilterOptions>({
     trendingOnly: false,
     strongHygieneOnly: false,
-    hasBookingRating: false,
+    hotelsOnly: false,
   })
   const [isAISearching, setIsAISearching] = useState(false)
   const [aiSearchQuery, setAISearchQuery] = useState<string | null>(null)
@@ -132,7 +133,7 @@ export default function HomePage() {
     if (sortBy !== "relevance") count++
     if (filters.trendingOnly) count++
     if (filters.strongHygieneOnly) count++
-    if (filters.hasBookingRating) count++
+    if (filters.hotelsOnly) count++
     return count
   }, [sortBy, filters])
 
@@ -148,16 +149,18 @@ export default function HomePage() {
 
       const matchesCategory = activeCategory === "all" || business.category === activeCategory
 
-      // Provider-neutral: reads LookMeUp's own `flags.trending`, never the
-      // Instagram-shaped field. Same results, no implied Instagram source.
+      // Honest ranking heuristic over genuine Google rating + review volume,
+      // never a fabricated social/Instagram signal.
       const matchesTrending = !filters.trendingOnly || isTrending(business)
       // Scheme-aware and real-data-only: matches FHRS 4-5 or an FHIS pass,
       // never the fabricated seed number.
       const matchesFoodHygiene = !filters.strongHygieneOnly ||
         isStrongHygiene(getVerifiedHygieneRating(business))
-      const matchesBooking = !filters.hasBookingRating || business.providerRatings.bookingCom !== undefined
+      // Genuine accommodation only, detected from real Google Places "types"
+      // (lodging, hotel, hostel, ...). Never restaurants/salons.
+      const matchesHotels = !filters.hotelsOnly || isAccommodationTags(business.tags)
 
-      return matchesSearch && matchesCategory && matchesTrending && matchesFoodHygiene && matchesBooking
+      return matchesSearch && matchesCategory && matchesTrending && matchesFoodHygiene && matchesHotels
     })
 
     if (sortBy === "google_rating") {
@@ -349,7 +352,7 @@ export default function HomePage() {
                 setFilters({
                   trendingOnly: false,
                   strongHygieneOnly: false,
-                  hasBookingRating: false,
+                  hotelsOnly: false,
                 })
                 setAISearchQuery(null)
                 setAISearchResults(null)

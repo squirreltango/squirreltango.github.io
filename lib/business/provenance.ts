@@ -63,15 +63,28 @@ export function hasLegacySeedInstagramData(business: Business): boolean {
 }
 
 /**
- * Provider-neutral trending signal, derived from LookMeUp's own ranking data.
+ * Honest, provider-neutral trending signal.
  *
- * This intentionally does NOT read `providerRatings.instagram.trending`, which
- * is legacy seed data - reading it would make a LookMeUp label depend on an
- * Instagram-shaped field. `flags.trending` is our own editorial/ranking flag,
- * so the label stays honest and provider-neutral.
+ * There is no genuine Instagram/social dataset, so trending must NOT pretend to
+ * represent social trends. It also deliberately does NOT read the legacy
+ * `providerRatings.instagram.trending` seed flag (or the `flags.trending` value
+ * historically derived from it), because that data is fabricated.
+ *
+ * Instead this is a transparent ranking heuristic over data we genuinely hold:
+ * a place is "trending" when Google shows it is both highly rated AND backed by
+ * a substantial volume of real reviews - i.e. lots of people are genuinely
+ * rating it well. Anything without real Google rating + review-count data can
+ * never qualify, so the filter shows an honest (possibly empty) result set
+ * rather than silently behaving like "All".
  */
+const TRENDING_MIN_RATING = 4.5
+const TRENDING_MIN_REVIEWS = 400
+
 export function isTrending(business: Business): boolean {
-  return business.flags.trending === true
+  const rating = business.rating.overall ?? business.providerRatings.google?.rating
+  const reviews = business.rating.reviewCount ?? business.providerRatings.google?.reviews
+  if (typeof rating !== "number" || typeof reviews !== "number") return false
+  return rating >= TRENDING_MIN_RATING && reviews >= TRENDING_MIN_REVIEWS
 }
 
 /**
