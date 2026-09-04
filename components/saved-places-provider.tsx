@@ -22,6 +22,10 @@ export interface SavedSnapshot {
   rating?: number
   reviewCount?: number
   priceLevel?: number
+  // Google-sourced coordinates, when known. Used by the plan map and to
+  // estimate travel between stops. Never guessed or inferred.
+  lat?: number
+  lng?: number
 }
 
 export interface SavedPlace {
@@ -62,6 +66,8 @@ function snapshotOf(business: Business): SavedSnapshot {
     rating: business.rating?.overall,
     reviewCount: business.rating?.reviewCount,
     priceLevel: business.priceLevel,
+    lat: business.location?.coordinates?.lat,
+    lng: business.location?.coordinates?.lng,
   }
 }
 

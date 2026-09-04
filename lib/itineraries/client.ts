@@ -223,3 +223,71 @@ export async function deleteItem(id: string): Promise<boolean> {
 export async function persistOrder(items: ItineraryItem[]): Promise<void> {
   await Promise.all(items.map((item, index) => updateItem(item.id, { position: index })))
 }
+
+/** Overwrite the stored snapshot for an item (used to persist backfilled coords). */
+export async function updateItemSnapshot(id: string, snapshot: SavedSnapshot): Promise<boolean> {
+  const supabase = createClient()
+  const { error } = await supabase
+    .from("itinerary_items")
+    .update({ business_snapshot: snapshot })
+    .eq("id", id)
+  if (error) {
+    console.log("[v0] updateItemSnapshot failed:", error.message)
+    return false
+  }
+  return true
+}
+
+/**
+ * Fill in missing lat/lng on plan stops.
+ *
+ * Older saves were captured before coordinates were stored in the snapshot, so
+ * their map markers and travel legs would be missing. For each stop that has a
+ * business reference but no coordinates, we re-fetch the live business detail
+ * (Google-sourced) and, if it returns coordinates, patch the snapshot in place
+ * and persist it. Stops with no reference (custom "Train to Brighton" type
+ * entries) or with no coordinates available are left untouched - nothing is
+ * ever invented. Returns the items with coordinates merged in.
+ */
+export async function backfillItemCoordinates(items: ItineraryItem[]): Promise<ItineraryItem[]> {
+  const needy = items.filter(
+    (i) => i.businessRef && (!i.snapshot?.lat || !i.snapshot?.lng),
+  )
+  if (needy.length === 0) return items
+
+  const resolved = new Map<string, { lat: number; lng: number }>()
+
+  await Promise.all(
+    needy.map(async (item) => {
+      try {
+        const res = await fetch(`/api/businesses/${encodeURIComponent(item.businessRef as string)}`)
+        if (!res.ok) return
+        const business = await res.json()
+        const coords = business?.location?.coordinates
+        if (
+          coords &&
+          typeof coords.lat === "number" &&
+          typeof coords.lng === "number"
+        ) {
+          resolved.set(item.id, { lat: coords.lat, lng: coords.lng })
+        }
+      } catch (err) {
+        console.log("[v0] backfill coord fetch failed:", (err as Error).message)
+      }
+    }),
+  )
+
+  if (resolved.size === 0) return items
+
+  // Persist each patched snapshot; failures are non-fatal (map still renders
+  // from the in-memory merge for this session).
+  const next = items.map((item) => {
+    const coords = resolved.get(item.id)
+    if (!coords || !item.snapshot) return item
+    const snapshot: SavedSnapshot = { ...item.snapshot, lat: coords.lat, lng: coords.lng }
+    void updateItemSnapshot(item.id, snapshot)
+    return { ...item, snapshot }
+  })
+
+  return next
+}
