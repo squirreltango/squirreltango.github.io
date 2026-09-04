@@ -3,9 +3,54 @@ import "server-only"
 import type { Business, OpeningHours } from "@/lib/types/business"
 import { mapGooglePlaceToBusiness, type GooglePlaceResult } from "@/lib/business/google-places"
 import { readCachedDetails } from "@/lib/business/google-details-cache"
-import { readCachedHygiene } from "@/lib/business/fsa-hygiene-cache"
+import {
+  readCachedHygiene,
+  writeCachedHygiene,
+  isFsaRatingFresh,
+} from "@/lib/business/fsa-hygiene-cache"
+import { matchFsaHygiene } from "@/lib/business/fsa-hygiene"
 import { parseLegacyAddressComponents, type LegacyAddressComponent } from "@/lib/business/location"
-import type { GoogleDetails } from "@/lib/types/business"
+import type { GoogleDetails, CategoryId, FoodHygieneRating } from "@/lib/types/business"
+
+/**
+ * Categories the FSA actually rates. A single detail-page view of a food venue
+ * may trigger one on-demand FSA lookup (the FSA API is free and
+ * unauthenticated), so ratings appear without waiting for the admin batch job.
+ * Non-food categories never call the FSA - they have no hygiene record and
+ * matching them risks a coincidental hit on a nearby food business.
+ */
+const FSA_FOOD_CATEGORIES = new Set<CategoryId>(["food", "cafes", "nightlife"] as CategoryId[])
+
+/**
+ * Resolve a hygiene rating for ONE venue on the detail page.
+ *
+ * Read the cache first. On a miss (or stale row) for a food business, perform a
+ * single live FSA match on demand and best-effort persist it. Fail-closed: any
+ * error, a non-food category, or a non-confident match yields `undefined`, so
+ * the venue simply shows no rating rather than a guessed one.
+ */
+async function resolveHygieneForDetail(
+  placeId: string,
+  business: Business,
+): Promise<FoodHygieneRating | undefined> {
+  try {
+    const cachedMap = await readCachedHygiene([placeId]).catch(() => new Map())
+    const cached = cachedMap.get(placeId)
+    if (cached && isFsaRatingFresh(cached)) return cached
+
+    if (!FSA_FOOD_CATEGORIES.has(business.category)) return cached ?? undefined
+
+    const result = await matchFsaHygiene(business)
+    if (result.status !== "match" || !result.rating) return cached ?? undefined
+
+    // Persist for everyone else (best-effort; memory-only if no service role).
+    void writeCachedHygiene(placeId, result.rating, business.id).catch(() => {})
+    return result.rating
+  } catch (error) {
+    console.error("[v0] resolveHygieneForDetail failed:", error)
+    return undefined
+  }
+}
 
 const TEXT_SEARCH_URL = "https://maps.googleapis.com/maps/api/place/textsearch/json"
 const DETAILS_URL = "https://maps.googleapis.com/maps/api/place/details/json"
@@ -202,18 +247,14 @@ export async function fetchLiveBusinessById(placeId: string): Promise<Business |
 
     // Attach cached Google Place Details enrichment (amenities/editorial summary)
     // for this venue. Pure cache read - never calls Place Details (New) here.
-    // Also read the cached FSA hygiene rating for this venue. Same contract:
-    // pure cache read, never calls the FSA, and a miss simply means the venue
-    // shows no hygiene rating.
-    const [cached, cachedHygieneMap] = await Promise.all([
+    // For hygiene, resolve ON DEMAND: read cache first, and on a miss for a food
+    // business do a single free FSA match so the rating appears without an admin
+    // batch run. Fail-closed - a non-match yields no rating.
+    const [cached, foodHygieneRating] = await Promise.all([
       readCachedDetails([placeId]),
-      readCachedHygiene([placeId]).catch((error) => {
-        console.error("[v0] readCachedHygiene failed for detail view:", error)
-        return new Map()
-      }),
+      resolveHygieneForDetail(placeId, business),
     ])
     const cachedDetails = cached.get(placeId)
-    const foodHygieneRating = cachedHygieneMap.get(placeId)
 
     // Parse the structured address components this Details call returned (legacy
     // Basic Data - no extra cost). Prefer the enrichment cache's location when
