@@ -1,8 +1,9 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Eye, Heart, Loader2, MousePointerClick, Navigation, CalendarCheck } from "lucide-react"
-import { getBusinessAnalytics, type BusinessClaim } from "@/lib/business-portal/client"
+import { Eye, Heart, Loader2, MousePointerClick, CalendarCheck, ListPlus } from "lucide-react"
+import { type BusinessClaim } from "@/lib/business-portal/client"
+import { usePortalData } from "@/lib/business-portal/data-context"
 import { cn } from "@/lib/utils"
 
 /**
@@ -19,9 +20,9 @@ const METRICS: {
 }[] = [
   { key: "profile_view", label: "Profile views", icon: Eye },
   { key: "save", label: "Saves", icon: Heart },
-  { key: "website_click", label: "Website clicks", icon: MousePointerClick },
-  { key: "directions_click", label: "Directions", icon: Navigation },
+  { key: "itinerary_add", label: "Itinerary adds", icon: ListPlus },
   { key: "booking_click", label: "Booking clicks", icon: CalendarCheck },
+  { key: "website_click", label: "Website clicks", icon: MousePointerClick },
 ]
 
 const RANGES = [
@@ -31,6 +32,7 @@ const RANGES = [
 ]
 
 export function AnalyticsSection({ claim }: { claim: BusinessClaim }) {
+  const data_ = usePortalData()
   const [days, setDays] = useState(30)
   const [counts, setCounts] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
@@ -41,7 +43,7 @@ export function AnalyticsSection({ claim }: { claim: BusinessClaim }) {
     setLoading(true)
     ;(async () => {
       try {
-        const data = await getBusinessAnalytics(claim.business_ref, days)
+        const data = await data_.getBusinessAnalytics(claim.business_ref, days)
         if (active) {
           setCounts(data)
           setError(null)
@@ -55,7 +57,7 @@ export function AnalyticsSection({ claim }: { claim: BusinessClaim }) {
     return () => {
       active = false
     }
-  }, [claim.business_ref, days])
+  }, [claim.business_ref, days, data_])
 
   const hasAny = Object.values(counts).some((n) => n > 0)
 

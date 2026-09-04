@@ -72,7 +72,8 @@ const CAPABILITIES: Record<Tier, TierCapabilities> = {
     priorityPlacement: true,
     instagramConnect: true,
     promotions: true,
-    websiteBuilder: false,
+    // Silver includes a self-managed LookMeUp microsite.
+    websiteBuilder: true,
     growthServices: false,
   },
   gold: {
@@ -118,7 +119,7 @@ export const REQUIRED_TIER: Partial<Record<keyof TierCapabilities, Tier>> = {
   priorityPlacement: "silver",
   instagramConnect: "silver",
   promotions: "silver",
-  websiteBuilder: "gold",
+  websiteBuilder: "silver",
   growthServices: "gold",
 }
 
