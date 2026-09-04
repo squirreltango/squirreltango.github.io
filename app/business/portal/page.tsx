@@ -202,12 +202,13 @@ export default function BusinessPortalPage() {
 /**
  * Preview-only merchant sandbox.
  *
- * Renders the exact Bronze/Silver/Gold portal experience against a fully
- * in-memory data client and a synthetic claim, so the merchant journey can be
- * inspected without an approved claim or an active subscription. It is gated by
- * `isPreviewEnvironment()` (never rendered on production hosts), everything it
- * writes is discarded on reload, and it is visually labelled as a sandbox so it
- * can never be mistaken for real business data.
+ * Renders the real Bronze/Silver portal experience against a fully in-memory
+ * data client and a synthetic claim, so the merchant journey can be inspected
+ * without an approved claim or an active subscription. Gold is intentionally
+ * excluded - it is a managed/dedicated-agent proposition with no self-service
+ * portal to preview. Gated by `isPreviewEnvironment()` (never rendered on
+ * production), everything it writes is discarded on reload, and it is visually
+ * labelled as a sandbox so it can never be mistaken for real business data.
  */
 function PortalPreviewPanel() {
   const [tier, setTier] = useState<Tier>("bronze")
@@ -222,7 +223,8 @@ function PortalPreviewPanel() {
   // the sandbox survive until the tier changes or the page reloads.
   const client = useMemo(() => createPreviewClient(tier), [tier])
   const claim = useMemo(() => previewClaim(tier), [tier])
-  const previewTiers: Tier[] = ["bronze", "silver", "gold"]
+  // Bronze + Silver only. Gold is managed and has no self-service portal.
+  const previewTiers: Tier[] = ["bronze", "silver"]
 
   if (!enabled) return null
 
@@ -234,9 +236,9 @@ function PortalPreviewPanel() {
             Preview
           </span>
           <div>
-            <h2 className="text-sm font-medium text-foreground">Merchant experience sandbox</h2>
+            <h2 className="text-sm font-medium text-foreground">Preview business experience</h2>
             <p className="text-xs text-muted-foreground">
-              Explore each plan&apos;s portal without a claim. Nothing here is saved or shown to customers.
+              Explore the Bronze and Silver portal without a claim. Nothing here is saved or shown to customers.
             </p>
           </div>
         </div>
@@ -260,7 +262,7 @@ function PortalPreviewPanel() {
                   tier === t ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground",
                 )}
               >
-                {TIER_LABEL[t]}
+                View as {TIER_LABEL[t]}
               </button>
             ))}
           </div>
@@ -510,8 +512,61 @@ function ProfileEditor({ claim, tier }: { claim: BusinessClaim; tier: Tier }) {
     )
   }
 
+  // Profile completeness from the core fields that make a listing useful. Real
+  // and honest - it reflects exactly what the merchant has filled in.
+  const completenessFields: (keyof BusinessProfileDraft)[] = [
+    "tagline",
+    "description",
+    "website_url",
+    "contact_email",
+    "contact_phone",
+    "booking_url",
+    "instagram_url",
+  ]
+  const filledCount = completenessFields.filter((f) => Boolean((draft[f] as string)?.trim())).length
+  const completeness = Math.round((filledCount / completenessFields.length) * 100)
+
   return (
     <form onSubmit={handleSave} className="flex flex-col gap-6">
+      {/* Overview: plan status + profile completeness at a glance. */}
+      <div className="rounded-2xl border border-border/60 bg-secondary/30 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Overview</p>
+            <p className="mt-0.5 font-medium text-foreground">{claim.business_name}</p>
+          </div>
+          <span
+            className={cn(
+              "rounded-full px-3 py-1 text-xs font-semibold",
+              tier === "gold"
+                ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
+                : tier === "silver"
+                  ? "bg-slate-400/20 text-slate-700 dark:text-slate-300"
+                  : "bg-orange-500/15 text-orange-700 dark:text-orange-400",
+            )}
+          >
+            {TIER_LABEL[tier]} plan
+          </span>
+        </div>
+        <div className="mt-4">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>Profile completeness</span>
+            <span className="tabular-nums">{completeness}%</span>
+          </div>
+          <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-border/60">
+            <div
+              className="h-full rounded-full bg-foreground transition-all"
+              style={{ width: `${completeness}%` }}
+            />
+          </div>
+          {completeness < 100 && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              Add a tagline, description, contact details and links to complete your profile.
+            </p>
+          )}
+        </div>
+      </div>
+
       <Section title="How your business reads">
         <Field label="Tagline" value={draft.tagline ?? ""} onChange={(v) => set("tagline", v)} placeholder="Chophouse in the heart of Soho" />
         <div className="flex flex-col gap-2 sm:col-span-2">

@@ -344,19 +344,45 @@ export function createPreviewClient(tier: Tier): PortalDataClient {
   }
 }
 
+/** Production hosts where the sandbox must NEVER appear, whatever else says. */
+const PRODUCTION_HOSTS = new Set(["lookmeupapp.com", "www.lookmeupapp.com"])
+
 /**
- * Whether the preview controls should be available in the current runtime.
+ * Whether the merchant sandbox should be available in the current runtime.
  *
- * Preview is a testing aid, so it must never function on a real production
- * domain. It is enabled on local dev and on v0 / Vercel preview hosts, and
- * disabled everywhere else (i.e. a live custom domain).
+ * Robust, layered gate rather than a single loose hostname rule:
+ *
+ *   1. Explicit override flag (NEXT_PUBLIC_ENABLE_MERCHANT_SANDBOX) always wins,
+ *      so it can be force-enabled or hard-killed without a code change.
+ *   2. The real production hosts are a hard denylist - they can never show it.
+ *   3. The v0 editor preview and local dev both run the Next dev server, so
+ *      NODE_ENV !== "production" reliably enables it there (this is what the
+ *      earlier hostname-only rule missed - the v0 editor host varies).
+ *   4. On production builds it is enabled only on known non-production preview
+ *      hosts (v0 / Vercel preview deployments), never on a bare custom domain.
+ *
+ * The result: visible in the v0 editor preview and on preview deployments,
+ * hard-disabled on lookmeupapp.com.
  */
 export function isPreviewEnvironment(): boolean {
-  if (typeof window === "undefined") return false
-  const host = window.location.hostname
+  // 1. Explicit override wins in both directions.
+  const flag = process.env.NEXT_PUBLIC_ENABLE_MERCHANT_SANDBOX
+  if (flag === "true") return true
+  if (flag === "false") return false
+
+  const host = typeof window !== "undefined" ? window.location.hostname : ""
+
+  // 2. Hard production denylist (belt-and-braces with the env check below).
+  if (PRODUCTION_HOSTS.has(host)) return false
+  // Vercel marks the production environment explicitly; never show it there.
+  if (process.env.NEXT_PUBLIC_VERCEL_ENV === "production") return false
+
+  // 3. Dev server (v0 editor preview + localhost) - the common case.
+  if (process.env.NODE_ENV !== "production") return true
+
+  // 4. Production build: only known non-production preview hosts.
+  if (!host) return false
   if (host === "localhost" || host === "127.0.0.1") return true
-  // v0 / Vercel preview + sandbox hosts. A real production custom domain
-  // matches none of these, so the panel never renders there.
   if (host.endsWith(".vusercontent.net")) return true
   if (host.endsWith(".vercel.run")) return true
   if (host.endsWith(".vercel.app")) return true

@@ -73,7 +73,7 @@ export default function PlanDetailPage() {
   const [plan, setPlan] = useState<Itinerary | null>(null)
   const [items, setItems] = useState<ItineraryItem[]>([])
   const [loading, setLoading] = useState(true)
-  const [addOpen, setAddOpen] = useState(false)
+  const [customOpen, setCustomOpen] = useState(false)
   const [customTitle, setCustomTitle] = useState("")
   const [copied, setCopied] = useState(false)
   const [editingTitle, setEditingTitle] = useState(false)
@@ -163,7 +163,6 @@ export default function PlanDetailPage() {
     })
     if (created) {
       setItems((prev) => [...prev, created])
-      setAddOpen(false)
     }
   }
 
@@ -176,7 +175,6 @@ export default function PlanDetailPage() {
     })
     if (created) {
       setItems((prev) => [...prev, created])
-      setAddOpen(false)
     }
   }
 
@@ -192,6 +190,7 @@ export default function PlanDetailPage() {
     if (created) {
       setItems((prev) => [...prev, created])
       setCustomTitle("")
+      setCustomOpen(false)
     }
   }
 
@@ -400,6 +399,9 @@ export default function PlanDetailPage() {
                     {items.map((item, index) => {
                       const leg = index < items.length - 1 ? legs[item.id] : null
                       const title = item.snapshot?.name ?? item.customTitle ?? "Stop"
+                      const hasCoords =
+                        typeof item.snapshot?.lat === "number" && typeof item.snapshot?.lng === "number"
+                      const isCustom = !item.businessRef
                       return (
                         <li key={item.id}>
                           <div className="flex items-start gap-4 rounded-2xl border border-border/60 bg-card p-4">
@@ -408,7 +410,20 @@ export default function PlanDetailPage() {
                             </span>
 
                             <div className="min-w-0 flex-1">
-                              <h3 className="truncate font-medium text-foreground">{title}</h3>
+                              <div className="flex items-center gap-2">
+                                <h3 className="truncate font-medium text-foreground">{title}</h3>
+                                {/* Clear signal of what kind of stop this is. */}
+                                {hasCoords ? (
+                                  <span className="flex shrink-0 items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
+                                    <MapPin className="h-3 w-3" aria-hidden="true" />
+                                    On map
+                                  </span>
+                                ) : (
+                                  <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                                    {isCustom ? "Custom activity" : "No map pin"}
+                                  </span>
+                                )}
+                              </div>
                               {item.snapshot?.neighbourhood && (
                                 <p className="flex items-center gap-1 text-sm text-muted-foreground">
                                   <MapPin className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
@@ -501,65 +516,86 @@ export default function PlanDetailPage() {
             )}
 
             <div className="rounded-3xl border border-border/60 bg-card p-5">
-              <button
-                onClick={() => setAddOpen((v) => !v)}
-                aria-expanded={addOpen}
-                className="mb-4 flex items-center gap-2 text-sm font-medium text-foreground"
-              >
-                <Plus className="h-4 w-4" aria-hidden="true" />
-                Add a stop
-              </button>
+              {/* Primary flow: live Google Places search. Always visible so a
+                  typed place resolves to a real, mapped location - never saved
+                  as raw text. Selecting a result stores its Place ID and
+                  coordinates via handleAddPlace. */}
+              <div className="space-y-5">
+                <div>
+                  <p className="mb-2 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
+                    Add a place
+                  </p>
+                  <PlaceSearch
+                    onSelect={(b) => void handleAddPlace(b)}
+                    existingRefs={existingRefs}
+                    placeholder="Search stations, restaurants, cafes, attractions…"
+                  />
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Pick a result to add it to your map with a real location.
+                  </p>
+                </div>
 
-              {addOpen && (
-                <div className="mb-5 space-y-5">
+                {candidates.length > 0 && (
                   <div>
                     <p className="mb-2 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
-                      Search for a place
+                      <Heart className="h-3.5 w-3.5" aria-hidden="true" />
+                      From your saved places
                     </p>
-                    <PlaceSearch onSelect={(b) => void handleAddPlace(b)} existingRefs={existingRefs} />
-                  </div>
-
-                  {candidates.length > 0 && (
-                    <div>
-                      <p className="mb-2 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                        <Heart className="h-3.5 w-3.5" aria-hidden="true" />
-                        From your saved places
-                      </p>
-                      <div className="flex flex-wrap gap-2">
-                        {candidates.map((s) => (
-                          <button
-                            key={s.id}
-                            onClick={() => void handleAddSaved(s.businessRef)}
-                            className={cn(
-                              "rounded-full border border-border px-3 py-1.5 text-sm text-foreground",
-                              "transition-colors hover:bg-secondary/80",
-                            )}
-                          >
-                            {s.snapshot?.name ?? "Saved place"}
-                          </button>
-                        ))}
-                      </div>
+                    <div className="flex flex-wrap gap-2">
+                      {candidates.map((s) => (
+                        <button
+                          key={s.id}
+                          onClick={() => void handleAddSaved(s.businessRef)}
+                          className={cn(
+                            "rounded-full border border-border px-3 py-1.5 text-sm text-foreground",
+                            "transition-colors hover:bg-secondary/80",
+                          )}
+                        >
+                          {s.snapshot?.name ?? "Saved place"}
+                        </button>
+                      ))}
                     </div>
-                  )}
-                </div>
-              )}
+                  </div>
+                )}
+              </div>
 
-              <form onSubmit={handleAddCustom} className="flex gap-2">
-                <input
-                  value={customTitle}
-                  onChange={(e) => setCustomTitle(e.target.value)}
-                  placeholder="Or add your own stop, e.g. Train to Brighton"
-                  aria-label="Custom stop title"
-                  className="flex-1 rounded-xl border border-border bg-background px-4 py-2.5 text-foreground placeholder:text-muted-foreground/70 focus:border-foreground focus:outline-none"
-                />
-                <button
-                  type="submit"
-                  className="rounded-xl bg-foreground px-5 py-2.5 font-medium text-background transition-colors hover:bg-foreground/90"
-                >
-                  Add
-                </button>
-              </form>
+              {/* Secondary flow: free-text custom activity, explicitly separate
+                  so it is never confused with a mapped place. No coordinates,
+                  no map pin - for things like "Meet Sarah" or "Picnic". */}
+              <div className="mt-5 border-t border-border/50 pt-5">
+                {!customOpen ? (
+                  <button
+                    onClick={() => setCustomOpen(true)}
+                    className="flex items-center gap-2 text-sm font-medium text-foreground"
+                  >
+                    <Plus className="h-4 w-4" aria-hidden="true" />
+                    Add custom activity
+                  </button>
+                ) : (
+                  <div>
+                    <p className="mb-2 text-xs text-muted-foreground">
+                      A free-text stop with no map pin, e.g. &ldquo;Meet Sarah&rdquo;, &ldquo;Picnic&rdquo;, &ldquo;Train home&rdquo;.
+                    </p>
+                    <form onSubmit={handleAddCustom} className="flex gap-2">
+                      <input
+                        autoFocus
+                        value={customTitle}
+                        onChange={(e) => setCustomTitle(e.target.value)}
+                        placeholder="Custom activity"
+                        aria-label="Custom activity title"
+                        className="flex-1 rounded-xl border border-border bg-background px-4 py-2.5 text-foreground placeholder:text-muted-foreground/70 focus:border-foreground focus:outline-none"
+                      />
+                      <button
+                        type="submit"
+                        className="rounded-xl bg-foreground px-5 py-2.5 font-medium text-background transition-colors hover:bg-foreground/90"
+                      >
+                        Add
+                      </button>
+                    </form>
+                  </div>
+                )}
+              </div>
             </div>
           </>
         )}

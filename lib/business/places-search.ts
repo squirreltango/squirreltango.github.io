@@ -403,14 +403,22 @@ async function attachCachedDetails(businesses: Business[]): Promise<Business[]> 
   const details = detailsResult.status === "fulfilled" ? detailsResult.value : new Map()
   const hygiene = hygieneResult.status === "fulfilled" ? hygieneResult.value : new Map()
 
-  if (details.size === 0 && hygiene.size === 0) return businesses
+  // On-demand FSA enrichment for food venues that missed the cache, so genuine
+  // hygiene ratings appear on the cards - not just after a detail-page visit.
+  // Bounded (MAX_LIST_FSA_LOOKUPS) and time-boxed so a page never blocks on
+  // dozens of FSA calls; anything not resolved this pass simply shows no badge
+  // and gets picked up on a later load. Results are best-effort cached, so
+  // repeat loads are cache-fast.
+  const liveHygiene = await enrichListHygiene(businesses, hygiene)
+
+  if (details.size === 0 && hygiene.size === 0 && liveHygiene.size === 0) return businesses
 
   return businesses.map((business) => {
     const key = business.externalIds?.googlePlaceId ?? business.id
     if (!key) return business
 
     const googleDetails = details.get(key)
-    const foodHygieneRating = hygiene.get(key)
+    const foodHygieneRating = hygiene.get(key) ?? liveHygiene.get(key)
     if (!googleDetails && !foodHygieneRating) return business
 
     return {
@@ -421,4 +429,55 @@ async function attachCachedDetails(businesses: Business[]): Promise<Business[]> 
         : {}),
     }
   })
+}
+
+/** Hard cap on live FSA matches per list request, to bound latency and load. */
+const MAX_LIST_FSA_LOOKUPS = 12
+/** Per-request time budget for the whole enrichment pass. */
+const LIST_FSA_TIMEOUT_MS = 4000
+
+/**
+ * Resolve genuine FSA ratings for food venues missing from the hygiene cache.
+ *
+ * Only food-category businesses are considered (the FSA rates nothing else),
+ * only the first MAX_LIST_FSA_LOOKUPS misses are attempted, and the whole pass
+ * is abandoned after LIST_FSA_TIMEOUT_MS so the list stays responsive. Every
+ * confident match is best-effort cached. Returns a place-id -> rating map for
+ * the ones resolved this pass; a miss just means "no badge", never a guess.
+ */
+async function enrichListHygiene(
+  businesses: Business[],
+  cachedHygiene: Map<string, FoodHygieneRating>,
+): Promise<Map<string, FoodHygieneRating>> {
+  const resolved = new Map<string, FoodHygieneRating>()
+
+  const candidates = businesses
+    .filter((b) => FSA_FOOD_CATEGORIES.has(b.category))
+    .map((b) => ({ key: b.externalIds?.googlePlaceId ?? b.id, business: b }))
+    .filter((c): c is { key: string; business: Business } => Boolean(c.key) && !cachedHygiene.has(c.key))
+    .slice(0, MAX_LIST_FSA_LOOKUPS)
+
+  if (candidates.length === 0) return resolved
+
+  const pass = Promise.allSettled(
+    candidates.map(async ({ key, business }) => {
+      try {
+        const result = await matchFsaHygiene(business)
+        if (result.status === "match" && result.rating) {
+          resolved.set(key, result.rating)
+          void writeCachedHygiene(key, result.rating, business.id).catch(() => {})
+        }
+      } catch {
+        // Fail-closed: no badge for this venue this pass.
+      }
+    }),
+  )
+
+  // Time-box the whole pass; whatever resolved before the deadline is used.
+  await Promise.race([
+    pass,
+    new Promise((resolve) => setTimeout(resolve, LIST_FSA_TIMEOUT_MS)),
+  ])
+
+  return resolved
 }
