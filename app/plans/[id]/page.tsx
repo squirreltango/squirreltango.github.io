@@ -15,8 +15,6 @@ import {
   Check,
   Map as MapIcon,
   List,
-  Footprints,
-  Bus,
   MapPin,
 } from "lucide-react"
 import { useAuth } from "@/components/auth-provider"
@@ -29,14 +27,14 @@ import {
   listItems,
   persistOrder,
   updateItem,
+  updateItemSnapshot,
   updateItinerary,
   type Itinerary,
   type ItineraryItem,
 } from "@/lib/itineraries/client"
-  import type { LatLng } from "@/lib/itineraries/transport"
-  import { DEFAULT_TRAVEL_MODE, isTravelMode, type TravelMode } from "@/lib/itineraries/routing"
-  import { PlanRouteMap, type RouteStop } from "@/components/plans/plan-route-map"
-  import { PlanLeg } from "@/components/plans/plan-leg"
+import { DEFAULT_TRAVEL_MODE, isTravelMode, type TravelMode } from "@/lib/itineraries/routing"
+import { PlanRouteMap, type RouteStop } from "@/components/plans/plan-route-map"
+import { PlanLeg } from "@/components/plans/plan-leg"
 import { PlaceSearch } from "@/components/plans/place-search"
 import type { Business } from "@/lib/types/business"
 import type { SavedSnapshot } from "@/components/saved-places-provider"
@@ -80,6 +78,12 @@ export default function PlanDetailPage() {
   const [copied, setCopied] = useState(false)
   const [editingTitle, setEditingTitle] = useState(false)
   const [view, setView] = useState<"timeline" | "map">("timeline")
+  // Chosen travel mode per leg, keyed by the earlier stop's id. Seeded from the
+  // stored snapshot so a saved choice survives reloads.
+  const [modes, setModes] = useState<Record<string, TravelMode>>({})
+  // Genuine route polyline per leg (earlier stop id -> points), reported by the
+  // PlanLeg components as they resolve real routes. null means "no real route".
+  const [routePaths, setRoutePaths] = useState<Record<string, [number, number][] | null>>({})
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -134,25 +138,45 @@ export default function PlanDetailPage() {
     return located
   }, [items])
 
-  // Estimated travel leg from each stop to the next, keyed by the earlier
-  // stop's id. Null when either endpoint lacks coordinates.
-  const legs = useMemo<Record<string, TravelLeg | null>>(() => {
-    const out: Record<string, TravelLeg | null> = {}
-    for (let i = 0; i < items.length - 1; i++) {
-      const a = items[i]
-      const b = items[i + 1]
-      const from =
-        typeof a.snapshot?.lat === "number" && typeof a.snapshot?.lng === "number"
-          ? { lat: a.snapshot.lat, lng: a.snapshot.lng }
-          : null
-      const to =
-        typeof b.snapshot?.lat === "number" && typeof b.snapshot?.lng === "number"
-          ? { lat: b.snapshot.lat, lng: b.snapshot.lng }
-          : null
-      out[a.id] = estimateLeg(from, to)
-    }
-    return out
+  // Seed each leg's travel mode from its stored snapshot the first time we see
+  // it, without clobbering a choice the user has already made this session.
+  useEffect(() => {
+    setModes((prev) => {
+      let changed = false
+      const next = { ...prev }
+      for (const item of items) {
+        if (next[item.id]) continue
+        const stored = item.snapshot?.travelModeToNext
+        next[item.id] = isTravelMode(stored) ? stored : DEFAULT_TRAVEL_MODE
+        changed = true
+      }
+      return changed ? next : prev
+    })
   }, [items])
+
+  // Route polylines aligned to the map's located-stop legs (index i = leg from
+  // routeStops[i] to routeStops[i+1]). A fetched route is only reused when the
+  // two located stops are consecutive items; otherwise the map falls back to a
+  // dashed straight line, so it never implies a route it does not have.
+  const mapRoutePaths = useMemo<(([number, number][]) | null)[]>(() => {
+    const paths: (([number, number][]) | null)[] = []
+    for (let i = 0; i < routeStops.length - 1; i++) {
+      const a = routeStops[i]
+      const b = routeStops[i + 1]
+      const aIndex = items.findIndex((it) => it.id === a.id)
+      const nextItem = aIndex >= 0 ? items[aIndex + 1] : undefined
+      paths.push(nextItem && nextItem.id === b.id ? routePaths[a.id] ?? null : null)
+    }
+    return paths
+  }, [routeStops, items, routePaths])
+
+  async function handleModeChange(itemId: string, mode: TravelMode) {
+    setModes((prev) => ({ ...prev, [itemId]: mode }))
+    const item = items.find((i) => i.id === itemId)
+    if (!item?.snapshot) return
+    // Persist the choice into the item's snapshot so it survives reloads.
+    await updateItemSnapshot(itemId, { ...item.snapshot, travelModeToNext: mode })
+  }
 
   async function handleAddSaved(ref: string) {
     const source = saved.find((s) => s.businessRef === ref)
@@ -391,19 +415,29 @@ export default function PlanDetailPage() {
 
                 {view === "map" ? (
                   <div className="space-y-3">
-                    <PlanRouteMap stops={routeStops} />
+                    <PlanRouteMap stops={routeStops} routePaths={mapRoutePaths} />
                     <p className="px-1 text-xs text-muted-foreground">
-                      Travel times are straight-line estimates, not live routing.
+                      Solid lines are real routes from the mapping provider. Dashed lines are
+                      straight-line links shown where routing isn&apos;t available.
                     </p>
                   </div>
                 ) : (
                   <ol className="space-y-0">
                     {items.map((item, index) => {
-                      const leg = index < items.length - 1 ? legs[item.id] : null
                       const title = item.snapshot?.name ?? item.customTitle ?? "Stop"
                       const hasCoords =
                         typeof item.snapshot?.lat === "number" && typeof item.snapshot?.lng === "number"
                       const isCustom = !item.businessRef
+                      const nextItem = items[index + 1]
+                      const legFrom = hasCoords
+                        ? { lat: item.snapshot!.lat as number, lng: item.snapshot!.lng as number }
+                        : null
+                      const legTo =
+                        nextItem &&
+                        typeof nextItem.snapshot?.lat === "number" &&
+                        typeof nextItem.snapshot?.lng === "number"
+                          ? { lat: nextItem.snapshot.lat, lng: nextItem.snapshot.lng }
+                          : null
                       return (
                         <li key={item.id}>
                           <div className="flex items-start gap-4 rounded-2xl border border-border/60 bg-card p-4">
@@ -493,21 +527,19 @@ export default function PlanDetailPage() {
                             </div>
                           </div>
 
-                          {/* Travel leg to the next stop. Only shown when both
-                              stops are located, so it is never fabricated. */}
+                          {/* Travel leg to the next stop. Offers a mode selector
+                              and shows a genuine provider route, or an honest
+                              straight-line fallback - never a fabricated time. */}
                           {index < items.length - 1 && (
-                            <div className="flex items-center gap-2 py-2 pl-8 text-sm text-muted-foreground">
-                              <span className="flex h-6 w-6 items-center justify-center">
-                                {leg?.mode === "transit" ? (
-                                  <Bus className="h-4 w-4" aria-hidden="true" />
-                                ) : (
-                                  <Footprints className="h-4 w-4" aria-hidden="true" />
-                                )}
-                              </span>
-                              <span className="border-l border-dashed border-border pl-3">
-                                {leg ? leg.label : "Add a location to estimate travel"}
-                              </span>
-                            </div>
+                            <PlanLeg
+                              from={legFrom}
+                              to={legTo}
+                              mode={modes[item.id] ?? DEFAULT_TRAVEL_MODE}
+                              onModeChange={(m) => void handleModeChange(item.id, m)}
+                              onRoute={(pts) =>
+                                setRoutePaths((prev) => ({ ...prev, [item.id]: pts }))
+                              }
+                            />
                           )}
                         </li>
                       )
