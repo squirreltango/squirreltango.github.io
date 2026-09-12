@@ -36,6 +36,7 @@ import { DEFAULT_TRAVEL_MODE, isTravelMode, type TravelMode } from "@/lib/itiner
 import { PlanRouteMap, type RouteStop } from "@/components/plans/plan-route-map"
 import { PlanLeg } from "@/components/plans/plan-leg"
 import { PlaceSearch } from "@/components/plans/place-search"
+import { getSavedGroup, groupsPresent, type SavedGroupId } from "@/lib/business/saved-categories"
 import type { Business } from "@/lib/types/business"
 import type { SavedSnapshot } from "@/components/saved-places-provider"
 import { cn } from "@/lib/utils"
@@ -117,6 +118,22 @@ export default function PlanDetailPage() {
   const candidates = useMemo(
     () => saved.filter((s) => !existingRefs.has(s.businessRef)),
     [saved, existingRefs],
+  )
+
+  // Same automatic, real category groups as the Saved page, so the quick-add
+  // can be filtered by type (Food & drink / Stays / ...). Only groups that
+  // actually have candidates are shown.
+  const [savedGroup, setSavedGroup] = useState<SavedGroupId | "all">("all")
+  const candidateGroups = useMemo(
+    () => groupsPresent(candidates.map((s) => ({ category: s.snapshot?.category, tags: s.snapshot?.tags }))),
+    [candidates],
+  )
+  const visibleCandidates = useMemo(
+    () =>
+      savedGroup === "all"
+        ? candidates
+        : candidates.filter((s) => getSavedGroup(s.snapshot?.category, s.snapshot?.tags) === savedGroup),
+    [candidates, savedGroup],
   )
 
   // Stops that have real coordinates, in visiting order, for the map.
@@ -576,8 +593,41 @@ export default function PlanDetailPage() {
                       <Heart className="h-3.5 w-3.5" aria-hidden="true" />
                       From your saved places
                     </p>
+
+                    {/* Category filter, only when there is more than one group. */}
+                    {candidateGroups.length > 1 && (
+                      <div className="mb-3 flex flex-wrap gap-1.5">
+                        <button
+                          onClick={() => setSavedGroup("all")}
+                          className={cn(
+                            "rounded-full px-2.5 py-1 text-xs font-medium transition-colors",
+                            savedGroup === "all"
+                              ? "bg-foreground text-background"
+                              : "bg-secondary text-muted-foreground hover:text-foreground",
+                          )}
+                        >
+                          All
+                        </button>
+                        {candidateGroups.map((g) => (
+                          <button
+                            key={g.id}
+                            onClick={() => setSavedGroup(g.id)}
+                            className={cn(
+                              "rounded-full px-2.5 py-1 text-xs font-medium transition-colors",
+                              savedGroup === g.id
+                                ? "bg-foreground text-background"
+                                : "bg-secondary text-muted-foreground hover:text-foreground",
+                            )}
+                          >
+                            {g.label}
+                            <span className="ml-1 tabular-nums opacity-70">{g.count}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
                     <div className="flex flex-wrap gap-2">
-                      {candidates.map((s) => (
+                      {visibleCandidates.map((s) => (
                         <button
                           key={s.id}
                           onClick={() => void handleAddSaved(s.businessRef)}
