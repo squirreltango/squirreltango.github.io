@@ -9,6 +9,10 @@ interface AISearchProps {
   isSearching: boolean
   activeQuery: string | null
   onClearSearch: () => void
+  /** "hero" hides the AI eyebrow + suggestion chips so the bar reads as a
+      clean rounded search field over the immersive hero image. */
+  variant?: "default" | "hero"
+  placeholder?: string
 }
 
 const SUGGESTION_CHIPS = [
@@ -41,7 +45,8 @@ const SIMILAR_QUERIES = [
   { trigger: ["coffee", "cafe"], suggestions: ["Specialty coffee shops", "Aesthetic cafes", "Quiet cafes to work from"] },
 ]
 
-export function AISearch({ onSearch, isSearching, activeQuery, onClearSearch }: AISearchProps) {
+export function AISearch({ onSearch, isSearching, activeQuery, onClearSearch, variant = "default", placeholder }: AISearchProps) {
+  const isHero = variant === "hero"
   const [query, setQuery] = useState("")
   const [isFocused, setIsFocused] = useState(false)
   const [showDropdown, setShowDropdown] = useState(false)
@@ -135,12 +140,14 @@ export function AISearch({ onSearch, isSearching, activeQuery, onClearSearch }: 
       {/* Search Container */}
       <div className="relative" ref={dropdownRef}>
         {/* AI Label */}
-        <div className="flex items-center gap-2 mb-4">
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/50">
-            <Sparkles className="h-3.5 w-3.5 text-amber-600" />
-            <span className="text-xs font-medium text-amber-700">AI-powered search</span>
+        {!isHero && (
+          <div className="flex items-center gap-2 mb-4">
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/50">
+              <Sparkles className="h-3.5 w-3.5 text-amber-600" />
+              <span className="text-xs font-medium text-amber-700">AI-powered search</span>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Main Search Input */}
         <div 
@@ -180,7 +187,7 @@ export function AISearch({ onSearch, isSearching, activeQuery, onClearSearch }: 
               }}
               onBlur={() => setIsFocused(false)}
               onKeyDown={handleKeyDown}
-              placeholder="Search anything... e.g. Sri Lankan wedding hair & makeup artists in London"
+              placeholder={placeholder ?? "Search anything... e.g. Sri Lankan wedding hair & makeup artists in London"}
               disabled={isSearching}
               rows={1}
               className={cn(
@@ -286,7 +293,7 @@ export function AISearch({ onSearch, isSearching, activeQuery, onClearSearch }: 
       </div>
 
       {/* Suggestion Chips */}
-      {!activeQuery && (
+      {!activeQuery && !isHero && (
         <div className="mt-6">
           <p className="text-sm text-muted-foreground mb-3">Try searching for:</p>
           <div className="flex flex-wrap gap-2">

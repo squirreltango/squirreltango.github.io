@@ -13,6 +13,7 @@ import { getHeadlineRating, getLocationLabel } from "@/lib/business/normalise-bu
 import { FilterBar, type SortOption, type FilterOptions } from "@/components/filter-bar"
 import { AIPicks } from "@/components/ai-picks"
 import { AISearch } from "@/components/ai-search"
+import { HomeHero } from "@/components/home-hero"
 import { Loader2, LayoutGrid, Map } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { isTrending, getVerifiedHygieneRating } from "@/lib/business/provenance"
@@ -193,7 +194,24 @@ export default function HomePage() {
         onViewModeChange={setViewMode}
       />
 
-      <main className="max-w-7xl mx-auto px-5 sm:px-8 py-10 sm:py-14">
+      {/* Immersive, image-led hero (premium city-guide reference). Full-bleed,
+          so it sits outside the padded main container. The live AISearch field
+          is passed in as children so the existing search flow is reused. */}
+      <HomeHero
+        categories={categories}
+        activeCategory={activeCategory}
+        onCategoryChange={setActiveCategory}
+      >
+        <AISearch
+          variant="hero"
+          onSearch={handleAISearch}
+          isSearching={isAISearching}
+          activeQuery={aiSearchQuery}
+          onClearSearch={handleClearAISearch}
+        />
+      </HomeHero>
+
+      <main id="discover" className="max-w-7xl mx-auto px-5 sm:px-8 py-10 sm:py-14">
         {/* Database Status Banner */}
         {hasNoLiveData && (
           <div className="mb-8 p-4 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-between gap-4 flex-wrap">
@@ -213,27 +231,6 @@ export default function HomePage() {
             </button>
           </div>
         )}
-
-        {/* Hero Section */}
-        <div className="mb-12 max-w-2xl">
-          <p className="text-sm font-medium tracking-widest uppercase text-muted-foreground mb-4">Discover London</p>
-          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-serif font-semibold text-foreground mb-5 leading-[1.1] text-balance">
-            Find extraordinary places near you
-          </h1>
-          <p className="text-lg sm:text-xl text-muted-foreground leading-relaxed">
-            Curated restaurants, wellness spots, and hidden gems handpicked for curious locals.
-          </p>
-        </div>
-
-        {/* AI Search */}
-        <div className="mb-12">
-          <AISearch
-            onSearch={handleAISearch}
-            isSearching={isAISearching}
-            activeQuery={aiSearchQuery}
-            onClearSearch={handleClearAISearch}
-          />
-        </div>
 
         {/* AI Picks Section - Only show when not searching */}
         {!aiSearchQuery && !isAISearching && (
