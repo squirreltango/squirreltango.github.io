@@ -14,7 +14,8 @@ import { FilterBar, type SortOption, type FilterOptions } from "@/components/fil
 import { AIPicks } from "@/components/ai-picks"
 import { AISearch } from "@/components/ai-search"
 import { HomeHero } from "@/components/home-hero"
-import { Loader2, LayoutGrid, Map } from "lucide-react"
+import { LocationPrompt } from "@/components/location-prompt"
+import { LayoutGrid, Map } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { isTrending, getVerifiedHygieneRating } from "@/lib/business/provenance"
 import { isAccommodationTags } from "@/lib/business/saved-categories"
@@ -36,7 +37,6 @@ export default function HomePage() {
   const [isAISearching, setIsAISearching] = useState(false)
   const [aiSearchQuery, setAISearchQuery] = useState<string | null>(null)
   const [aiSearchResults, setAISearchResults] = useState<Business[] | null>(null)
-  const [isSettingUp, setIsSettingUp] = useState(false)
   // Business to open the map on, set by "Get Directions" on a detail page.
   const [focusBusinessId, setFocusBusinessId] = useState<string | null>(null)
 
@@ -71,25 +71,6 @@ export default function HomePage() {
   // True when the live pipeline returned nothing, so the UI can offer setup
   // instead of silently rendering fake businesses.
   const hasNoLiveData = !isLoading && baseBusinesses.length === 0
-
-  // Setup database if needed
-  const handleSetupDatabase = async () => {
-    setIsSettingUp(true)
-    try {
-      const res = await fetch("/api/setup", { method: "POST" })
-      const data = await res.json()
-      if (data.error) {
-        console.error("Setup error:", data.error)
-      } else {
-        // Refetch businesses after setup
-        mutate()
-      }
-    } catch (err) {
-      console.error("Setup failed:", err)
-    } finally {
-      setIsSettingUp(false)
-    }
-  }
 
   const handleAISearch = async (query: string) => {
     setIsAISearching(true)
@@ -212,23 +193,11 @@ export default function HomePage() {
       </HomeHero>
 
       <main id="discover" className="max-w-7xl mx-auto px-5 sm:px-8 py-10 sm:py-14">
-        {/* Database Status Banner */}
+        <LocationPrompt />
+
         {hasNoLiveData && (
-          <div className="mb-8 p-4 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-between gap-4 flex-wrap">
-            <div>
-              <p className="text-sm font-medium text-amber-800">No live businesses found</p>
-              <p className="text-xs text-amber-600">
-                Run setup to ingest genuine Google Places data for your area
-              </p>
-            </div>
-            <button
-              onClick={handleSetupDatabase}
-              disabled={isSettingUp}
-              className="px-4 py-2 rounded-lg bg-amber-600 text-white text-sm font-medium hover:bg-amber-700 transition-colors disabled:opacity-50 flex items-center gap-2"
-            >
-              {isSettingUp && <Loader2 className="h-4 w-4 animate-spin" />}
-              {isSettingUp ? "Setting up..." : "Setup Database"}
-            </button>
+          <div className="mb-8 rounded-2xl border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
+            No live businesses are available yet. Results will appear here after the protected ingestion pipeline runs.
           </div>
         )}
 

@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
-import { NextResponse } from "next/server"
+import { verifyAdminRequest } from "@/lib/admin-auth"
+import { NextRequest, NextResponse } from "next/server"
 
 
 // New-model schema. `IF NOT EXISTS` guards a fresh install; the `ALTER TABLE`
@@ -46,7 +47,12 @@ DROP POLICY IF EXISTS "Allow public read access" ON businesses;
 CREATE POLICY "Allow public read access" ON businesses FOR SELECT USING (true);
 `
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  const auth = verifyAdminRequest(request)
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
+
   const supabase = await createClient()
 
   try {
