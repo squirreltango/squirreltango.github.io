@@ -1,9 +1,10 @@
 import { createClient } from "@/lib/supabase/server"
-import { verifyAdminRequest } from "@/lib/admin-auth"
-import { NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 
+// Schema changes are reviewed and applied manually to the existing production
+// Supabase project. This route intentionally does not execute runtime DDL.
 
-// New-model schema. `IF NOT EXISTS` guards a fresh install; the `ALTER TABLE`
+/* New-model schema. `IF NOT EXISTS` guards a fresh install; the `ALTER TABLE`
 // statements migrate an existing legacy table by adding the new columns
 // (existing data is never deleted).
 const CREATE_TABLE_SQL = `
@@ -45,47 +46,16 @@ ALTER TABLE businesses ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Allow public read access" ON businesses;
 CREATE POLICY "Allow public read access" ON businesses FOR SELECT USING (true);
-`
+` */
 
-export async function POST(request: NextRequest) {
-  const auth = verifyAdminRequest(request)
-  if (!auth.ok) {
-    return NextResponse.json({ error: auth.error }, { status: auth.status })
-  }
-
-  const supabase = await createClient()
-
-  try {
-    // Create/migrate table (best-effort; requires an `exec_sql` RPC).
-    const { error: createError } = await supabase
-      .rpc("exec_sql", { sql: CREATE_TABLE_SQL })
-      .single()
-
-    if (createError && !createError.message.includes("already exists")) {
-      console.log("[v0] Table creation note:", createError.message)
-    }
-
-    const { count } = await supabase
-      .from("businesses")
-      .select("*", { count: "exact", head: true })
-
-    // Seeding fabricated example businesses is DISABLED. This route used to
-    // insert the curated dataset (Dishoom et al), which then surfaced in
-    // discovery as if it were genuine live data - complete with invented
-    // ratings, review counts and Instagram follower figures.
-    //
-    // The table is now populated exclusively by the real ingestion pipeline
-    // (Google Places -> google_place_details -> fsa_hygiene_details), so this
-    // route only ensures the schema exists.
-    return NextResponse.json({
-      message:
-        "Schema ready. Businesses are ingested from Google Places; no example data is seeded.",
-      count: count ?? 0,
-    })
-  } catch (err) {
-    console.error("[v0] Setup error:", err)
-    return NextResponse.json({ error: "Setup failed" }, { status: 500 })
-  }
+export async function POST() {
+  return NextResponse.json(
+    {
+      error:
+        "Runtime schema setup is disabled. Review scripts/008_production_security_hardening.sql and apply approved SQL manually to the existing Supabase project.",
+    },
+    { status: 410 },
+  )
 }
 
 export async function GET() {
