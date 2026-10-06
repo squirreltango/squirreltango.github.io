@@ -10,8 +10,9 @@
 
 begin;
 
--- 1. Remove the duplicate catalogue read policy. The canonical policy remains.
-drop policy if exists "Allow public read access" on public.businesses;
+-- 1. Preserve all existing businesses SELECT policies.
+-- The supplied audit cannot safely identify which similarly named policy is
+-- canonical in production, so this migration intentionally changes none.
 
 -- 2. Prevent unrestricted analytics payloads.
 -- The application should still add server/API rate limiting before launch.
@@ -26,14 +27,9 @@ create policy events_insert_validated
     and event_type in (
       'profile_view',
       'save',
-      'website_click',
-      'directions_click',
-      'booking_click',
-      'instagram_click',
-      'phone_click',
-      'card_click',
       'itinerary_add',
-      'booking_completed'
+      'booking_click',
+      'website_click'
     )
   );
 
@@ -56,7 +52,7 @@ commit;
 -- Manual follow-up required before applying:
 -- * Verify account_type is not accepted from any browser profile update path.
 -- * Verify the exact event_type values used by the deployed app.
--- * Verify the existing canonical businesses SELECT policy name.
+-- * Existing businesses SELECT policies are intentionally unchanged.
 -- * Confirm exec_sql is not executable by anon/authenticated.
 -- * Add server-side booking validation/rate limiting before enabling public booking writes.
 --
