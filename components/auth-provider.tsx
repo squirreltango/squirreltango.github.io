@@ -1,7 +1,7 @@
 "use client"
 
 import { createContext, useContext, useEffect, useMemo, useState, useCallback } from "react"
-import type { Session, User } from "@supabase/supabase-js"
+import type { AuthChangeEvent, Session, User } from "@supabase/supabase-js"
 import { createClient } from "@/lib/supabase/client"
 
 export type AccountType = "personal" | "business"
@@ -51,19 +51,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let active = true
 
-    supabase.auth.getSession().then(({ data }) => {
-      if (!active) return
-      setSession(data.session)
-      void loadProfile(data.session?.user?.id).finally(() => {
-        if (active) setLoading(false)
-      })
-    })
-
+    // Supabase emits INITIAL_SESSION through this subscription. Use that event
+    // as the single initial-session source instead of also calling getSession()
+    // here; concurrent initialization paths can compete for Supabase Auth's
+    // navigator lock, especially when Strict Mode remounts this provider.
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    } = supabase.auth.onAuthStateChange((event: AuthChangeEvent, nextSession: Session | null) => {
+      if (!active) return
+
       setSession(nextSession)
-      void loadProfile(nextSession?.user?.id)
+      void loadProfile(nextSession?.user?.id).finally(() => {
+        if (active && event === "INITIAL_SESSION") setLoading(false)
+      })
     })
 
     return () => {

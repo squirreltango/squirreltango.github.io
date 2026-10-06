@@ -105,14 +105,34 @@ export function SavedPlacesProvider({ children }: { children: React.ReactNode })
       .from("saved_businesses")
       .select("id, business_ref, collection, notes, business_snapshot, created_at")
       .order("created_at", { ascending: false })
-      .then(({ data, error }) => {
+      .then(({
+        data,
+        error,
+      }: {
+        data: Array<{
+          id: string
+          business_ref: string
+          collection: string | null
+          notes: string | null
+          business_snapshot: SavedSnapshot | null
+          created_at: string
+        }> | null
+        error: { message: string } | null
+      }) => {
         if (!active) return
         if (error) {
           console.log("[v0] saved fetch failed:", error.message)
           setSaved([])
         } else {
           setSaved(
-            (data ?? []).map((row) => ({
+            (data ?? []).map((row: {
+              id: string
+              business_ref: string
+              collection: string | null
+              notes: string | null
+              business_snapshot: SavedSnapshot | null
+              created_at: string
+            }) => ({
               id: row.id as string,
               businessRef: row.business_ref as string,
               collection: (row.collection as string) ?? DEFAULT_COLLECTION,
