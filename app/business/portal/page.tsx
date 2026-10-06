@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
 import { Store, Plus, Check, Clock, X, ExternalLink, Loader2, ShieldCheck } from "lucide-react"
 import { Header } from "@/components/header"
@@ -21,9 +21,6 @@ import {
   PortalDataProvider,
   usePortalData,
   realPortalClient,
-  createPreviewClient,
-  previewClaim,
-  isPreviewEnvironment,
 } from "@/lib/business-portal/data-context"
 import { TierLockedSection } from "@/components/business/tier-locked-section"
 import { InstagramSection } from "@/components/business/instagram-section"
@@ -93,9 +90,6 @@ export default function BusinessPortalPage() {
               </button>
             }
           />
-          {/* Preview is a no-auth testing aid, so it is offered here too.
-              The panel self-gates to preview environments after mount. */}
-          <PortalPreviewPanel />
         </div>
         <AuthModal isOpen={authOpen} onClose={() => setAuthOpen(false)} defaultAccountType="business" />
       </Shell>
@@ -105,8 +99,6 @@ export default function BusinessPortalPage() {
   return (
     <Shell onOpenAuth={() => setAuthOpen(true)}>
       <div className="flex flex-col gap-10">
-        <PortalPreviewPanel />
-
         <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div className="flex flex-col gap-2">
             <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Business portal</p>
@@ -196,86 +188,6 @@ export default function BusinessPortalPage() {
       </div>
       <AuthModal isOpen={authOpen} onClose={() => setAuthOpen(false)} defaultAccountType="business" />
     </Shell>
-  )
-}
-
-/**
- * Preview-only merchant sandbox.
- *
- * Renders the real Bronze/Silver portal experience against a fully in-memory
- * data client and a synthetic claim, so the merchant journey can be inspected
- * without an approved claim or an active subscription. Gold is intentionally
- * excluded - it is a managed/dedicated-agent proposition with no self-service
- * portal to preview. Gated by `isPreviewEnvironment()` (never rendered on
- * production), everything it writes is discarded on reload, and it is visually
- * labelled as a sandbox so it can never be mistaken for real business data.
- */
-function PortalPreviewPanel() {
-  const [tier, setTier] = useState<Tier>("bronze")
-  const [open, setOpen] = useState(false)
-  // Evaluate the environment after mount: isPreviewEnvironment() reads
-  // window, which is unavailable during SSR/first render, so gating on it
-  // directly would keep the panel out of the DOM forever.
-  const [enabled, setEnabled] = useState(false)
-  useEffect(() => setEnabled(isPreviewEnvironment()), [])
-
-  // One preview client per tier, kept stable across re-renders so edits made in
-  // the sandbox survive until the tier changes or the page reloads.
-  const client = useMemo(() => createPreviewClient(tier), [tier])
-  const claim = useMemo(() => previewClaim(tier), [tier])
-  // Bronze + Silver only. Gold is managed and has no self-service portal.
-  const previewTiers: Tier[] = ["bronze", "silver"]
-
-  if (!enabled) return null
-
-  return (
-    <section className="rounded-3xl border border-dashed border-amber-500/50 bg-amber-500/5 p-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <span className="rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">
-            Preview
-          </span>
-          <div>
-            <h2 className="text-sm font-medium text-foreground">Preview business experience</h2>
-            <p className="text-xs text-muted-foreground">
-              Explore the Bronze and Silver portal without a claim. Nothing here is saved or shown to customers.
-            </p>
-          </div>
-        </div>
-        <button
-          onClick={() => setOpen((v) => !v)}
-          className="rounded-full border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-secondary/80"
-        >
-          {open ? "Hide preview" : "Open preview"}
-        </button>
-      </div>
-
-      {open && (
-        <div className="mt-5">
-          <div className="mb-4 inline-flex rounded-full bg-secondary p-1">
-            {previewTiers.map((t) => (
-              <button
-                key={t}
-                onClick={() => setTier(t)}
-                className={cn(
-                  "rounded-full px-4 py-1.5 text-sm font-medium transition-colors",
-                  tier === t ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                View as {TIER_LABEL[t]}
-              </button>
-            ))}
-          </div>
-
-          <div className="rounded-2xl border border-border/60 bg-card p-5">
-            <PortalDataProvider client={client}>
-              {/* key forces a clean remount when the tier (and its client) change */}
-              <ProfileEditor key={tier} claim={claim} tier={tier} />
-            </PortalDataProvider>
-          </div>
-        </div>
-      )}
-    </section>
   )
 }
 
