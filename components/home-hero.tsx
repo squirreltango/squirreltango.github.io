@@ -21,7 +21,7 @@ interface HomeHeroProps {
 
 /**
  * Immersive, image-led hero matching the premium city-guide reference: a full
- * width dusk-city photograph under a dark gradient, the LookMeUp wordmark and
+ * width dusk-city photograph under a dark gradient, the SpotMeOut wordmark and
  * discovery tagline centred on top, a large rounded search field, and a row of
  * floating category tiles. Purely visual — all behaviour comes from props.
  */
@@ -45,13 +45,13 @@ export function HomeHero({ categories, activeCategory, onCategoryChange, childre
       </div>
 
       <div className="relative z-10 mx-auto max-w-3xl px-5 pt-14 pb-9 text-center sm:px-8 sm:pt-20 sm:pb-12">
-        {/* Wordmark — keeps the existing LookMeUp brand identity */}
+        {/* Wordmark — keeps the existing SpotMeOut brand identity */}
         <div className="mb-6 flex items-center justify-center gap-3">
           <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white font-serif text-2xl font-semibold text-neutral-950 shadow-lg shadow-black/30">
-            L
+            S
           </span>
           <span className="font-serif text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-            LookMeUp
+            SpotMeOut
           </span>
         </div>
 

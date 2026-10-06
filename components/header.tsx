@@ -33,13 +33,13 @@ export function Header({ onOpenAuth, viewMode = "list", onViewModeChange }: Head
               "shadow-lg shadow-foreground/10 transition-all duration-300",
               "group-hover:shadow-xl group-hover:shadow-foreground/15 group-hover:scale-105 group-hover:rotate-[-3deg]"
             )}>
-              <span className="text-background font-serif font-semibold text-xl transition-transform duration-300 group-hover:scale-110">L</span>
+              <span className="text-background font-serif font-semibold text-xl transition-transform duration-300 group-hover:scale-110">S</span>
             </div>
             <span className={cn(
               "font-serif font-semibold text-2xl tracking-tight text-foreground",
               "transition-all duration-300 group-hover:tracking-normal"
             )}>
-              LookMeUp
+              SpotMeOut
             </span>
           </Link>
 

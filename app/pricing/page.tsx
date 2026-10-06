@@ -36,7 +36,7 @@ const PLANS: Plan[] = [
     name: "Bronze",
     price: "Free",
     cadence: "always",
-    summary: "Get discovered and take control of your LookMeUp presence.",
+    summary: "Get discovered and take control of your SpotMeOut presence.",
     features: [
       "Claim and verify your business",
       "Keep name, address and hours correct",
@@ -57,7 +57,7 @@ const PLANS: Plan[] = [
     features: [
       "Everything in Bronze",
       "Enhanced profile with richer content",
-      "Take bookings inside LookMeUp",
+      "Take bookings inside SpotMeOut",
       "Profile views, saves and click analytics",
       "Priority visibility in relevant searches",
     ],
@@ -68,7 +68,7 @@ const PLANS: Plan[] = [
     name: "Gold",
     price: "Coming soon",
     cadence: "",
-    summary: "Grow your business with LookMeUp.",
+    summary: "Grow your business with SpotMeOut.",
     features: [
       "Everything in Silver",
       "Website, domain and trademark support",

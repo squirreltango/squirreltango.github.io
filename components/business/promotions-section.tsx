@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils"
  * Silver: promotions. Merchants create genuine offers shown on their listing.
  * Nothing is prefilled with sample offers — the list starts empty.
  *
- * "Push to LookMeUp users" is a real product capability, but no browser/mobile
+ * "Push to SpotMeOut users" is a real product capability, but no browser/mobile
  * push delivery infrastructure is wired up yet. The UI is explicit about this:
  * the delivery step is labelled as not yet activated rather than pretending a
  * notification was sent.
@@ -186,12 +186,12 @@ export function PromotionsSection({ claim }: { claim: BusinessClaim }) {
         </ul>
       )}
 
-      {/* Honest delivery status: push to LookMeUp users is a planned capability,
+      {/* Honest delivery status: push to SpotMeOut users is a planned capability,
           not something we can pretend already happened. */}
       <div className="flex items-start gap-2.5 rounded-xl border border-dashed border-border/60 bg-muted/30 p-3">
         <Send className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
         <p className="text-xs text-muted-foreground leading-relaxed">
-          <span className="text-foreground font-medium">Push to LookMeUp users</span> — active promotions appear on your
+          <span className="text-foreground font-medium">Push to SpotMeOut users</span> — active promotions appear on your
           listing now. Direct push notifications to nearby and saved-you users are on the roadmap and{" "}
           <span className="text-foreground">not yet activated</span>, so nothing is sent to devices yet.
         </p>

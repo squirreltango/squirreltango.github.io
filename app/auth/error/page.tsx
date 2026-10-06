@@ -26,7 +26,7 @@ export default async function AuthErrorPage({
           href="/"
           className="inline-flex items-center justify-center px-6 py-3.5 rounded-2xl bg-foreground text-background font-semibold transition-all duration-300 hover:bg-foreground/90 hover:scale-[1.02] active:scale-[0.98]"
         >
-          Back to LookMeUp
+          Back to SpotMeOut
         </Link>
       </div>
     </main>

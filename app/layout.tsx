@@ -10,9 +10,21 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const playfair = Playfair_Display({ subsets: ["latin"], variable: "--font-playfair" });
 
 export const metadata: Metadata = {
-  title: 'LookMeUp - Discover Local Businesses',
+  title: 'SpotMeOut - Discover Local Businesses',
   description: 'Find trendy restaurants, gyms, salons, and hidden gems near you in the UK',
   generator: 'v0.app',
+  applicationName: 'SpotMeOut',
+  openGraph: {
+    title: 'SpotMeOut - Discover Local Businesses',
+    siteName: 'SpotMeOut',
+    description: 'Find trendy restaurants, gyms, salons, and hidden gems near you in the UK',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary',
+    title: 'SpotMeOut - Discover Local Businesses',
+    description: 'Find trendy restaurants, gyms, salons, and hidden gems near you in the UK',
+  },
   icons: {
     icon: [
       {

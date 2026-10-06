@@ -82,7 +82,7 @@ export default function BusinessPortalPage() {
         <div className="flex flex-col gap-10">
           <EmptyState
             icon={<Store className="h-7 w-7 text-muted-foreground" />}
-            title="Manage your business on LookMeUp"
+            title="Manage your business on SpotMeOut"
             body="Sign in with a business account to claim your business, keep its details accurate and add booking links."
             action={
               <button
@@ -112,7 +112,7 @@ export default function BusinessPortalPage() {
             <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Business portal</p>
             <h1 className="font-serif text-4xl sm:text-5xl text-foreground text-balance">Your businesses</h1>
             <p className="text-muted-foreground max-w-xl leading-relaxed">
-              Claim a business to manage how it appears across LookMeUp, add booking links and keep your details current.
+              Claim a business to manage how it appears across SpotMeOut, add booking links and keep your details current.
             </p>
             <p className="text-sm text-foreground">
               Claiming your business is free.
@@ -623,7 +623,7 @@ function ProfileEditor({ claim, tier }: { claim: BusinessClaim; tier: Tier }) {
         <BookingsSection claim={claim} />
       ) : (
         <TierLockedSection
-          title="Take bookings inside LookMeUp"
+          title="Take bookings inside SpotMeOut"
           description="Let customers request a table without leaving your listing, and manage requests here."
           requiredTier={REQUIRED_TIER.nativeBookings ?? "silver"}
         />

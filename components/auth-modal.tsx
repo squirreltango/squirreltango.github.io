@@ -201,7 +201,7 @@ export function AuthModal({
   }
 
   const heading =
-    mode === "login" ? "Welcome back" : mode === "signup" ? "Join LookMeUp" : "Reset your password"
+    mode === "login" ? "Welcome back" : mode === "signup" ? "Join SpotMeOut" : "Reset your password"
   const subheading =
     mode === "login"
       ? "Sign in to access your saved places"
@@ -259,7 +259,7 @@ export function AuthModal({
             <>
               <fieldset className="space-y-2">
                 <legend className="text-sm font-medium text-foreground mb-2">
-                  How will you use LookMeUp?
+                  How will you use SpotMeOut?
                 </legend>
                 <div className="grid grid-cols-2 gap-3">
                   {(
@@ -427,7 +427,7 @@ export function AuthModal({
             </button>
           )}
           <p className="text-muted-foreground">
-            {mode === "login" ? "New to LookMeUp? " : "Already have an account? "}
+            {mode === "login" ? "New to SpotMeOut? " : "Already have an account? "}
             <button
               onClick={() => setMode(mode === "login" ? "signup" : "login")}
               className="text-foreground font-semibold underline-offset-2 transition-all duration-300 hover:underline"

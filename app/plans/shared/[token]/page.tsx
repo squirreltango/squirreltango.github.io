@@ -64,7 +64,7 @@ export default function SharedPlanPage() {
               href="/"
               className="mt-2 rounded-full bg-foreground px-6 py-3 text-sm font-medium text-background transition-all hover:bg-foreground/90 active:scale-95"
             >
-              Explore LookMeUp
+              Explore SpotMeOut
             </Link>
           </div>
         ) : (

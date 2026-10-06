@@ -152,7 +152,7 @@ export function createPreviewClient(tier: Tier): PortalDataClient {
     business_ref: ref,
     tagline: "Seasonal small plates in the heart of Soho",
     description:
-      "A preview of how your listing reads on LookMeUp. Edit any field and press save — changes stay in this preview session only.",
+      "A preview of how your listing reads on SpotMeOut. Edit any field and press save — changes stay in this preview session only.",
     booking_url: null,
     menu_url: null,
     order_url: null,

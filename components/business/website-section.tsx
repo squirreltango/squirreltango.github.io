@@ -195,7 +195,7 @@ export function WebsiteSection({ claim }: { claim: BusinessClaim }) {
               className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-foreground focus:outline-none"
             />
             <span className="mt-1 block text-xs text-muted-foreground">
-              Point your domain at LookMeUp, or use your free {lookmeupUrl} address.
+              Point your domain at SpotMeOut, or use your free {lookmeupUrl} address.
             </span>
           </label>
         </div>
