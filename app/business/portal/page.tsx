@@ -1,6 +1,7 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useEffect, useState } from "react"
+import useSWR from "swr"
 import Link from "next/link"
 import { Store, Plus, Check, Clock, X, ExternalLink, Loader2, ShieldCheck } from "lucide-react"
 import { Header } from "@/components/header"
@@ -23,45 +24,24 @@ import {
   realPortalClient,
 } from "@/lib/business-portal/data-context"
 import { TierLockedSection } from "@/components/business/tier-locked-section"
-import { InstagramSection } from "@/components/business/instagram-section"
-import { BookingsSection } from "@/components/business/bookings-section"
+import { InstagramConnection } from "@/components/business/instagram-connection"
 import { PromotionsSection } from "@/components/business/promotions-section"
 import { AnalyticsSection } from "@/components/business/analytics-section"
-import { WebsiteSection } from "@/components/business/website-section"
 
 export default function BusinessPortalPage() {
   const { user, loading: authLoading, isBusiness } = useAuth()
   const [authOpen, setAuthOpen] = useState(false)
-  const [claims, setClaims] = useState<BusinessClaim[]>([])
-  const [subscription, setSubscription] = useState<Subscription | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [showClaimForm, setShowClaimForm] = useState(false)
   const [selectedClaim, setSelectedClaim] = useState<BusinessClaim | null>(null)
-
-  const refresh = useCallback(async () => {
-    if (!user) {
-      setClaims([])
-      setSubscription(null)
-      setLoading(false)
-      return
-    }
-    setLoading(true)
-    try {
-      const [c, s] = await Promise.all([listClaims(), getSubscription()])
-      setClaims(c)
-      setSubscription(s)
-      setError(null)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load your businesses.")
-    } finally {
-      setLoading(false)
-    }
-  }, [user])
-
-  useEffect(() => {
-    if (!authLoading) void refresh()
-  }, [authLoading, refresh])
+  const portal = useSWR(user ? ['merchant-portal', user.id] : null, async () => {
+    const [claims, subscription] = await Promise.all([listClaims(), getSubscription()])
+    return { claims, subscription }
+  }, { refreshInterval: 30000 })
+  const claims = portal.data?.claims ?? []
+  const subscription = portal.data?.subscription ?? null
+  const loading = portal.isLoading
+  const error = portal.error?.message
+  const refresh = () => portal.mutate()
 
   if (authLoading) {
     return (
@@ -248,7 +228,7 @@ function ClaimRow({
               <p className="text-sm text-muted-foreground leading-relaxed max-w-prose">
                 {claim.status === "pending"
                   ? "We are checking that you represent this business. Editing unlocks once the claim is approved — this protects businesses from being edited by someone who does not own them."
-                  : "This claim was not approved. If you believe this is an error, submit a new claim with clearer evidence of ownership."}
+                  : "This claim does not grant management access. Contact SpotMeOut for a manual review; submitting a duplicate claim will not bypass this decision."}
               </p>
               {claim.evidence_notes && (
                 <p className="text-sm text-muted-foreground mt-2">
@@ -269,6 +249,8 @@ function StatusPill({ status }: { status: BusinessClaim["status"] }) {
     approved: { label: "Approved", icon: Check, cls: "bg-foreground text-background" },
     pending: { label: "Pending", icon: Clock, cls: "bg-muted text-muted-foreground" },
     rejected: { label: "Rejected", icon: X, cls: "bg-destructive/10 text-destructive" },
+    revoked: { label: "Revoked", icon: X, cls: "bg-destructive/10 text-destructive" },
+    disputed: { label: "Disputed", icon: Clock, cls: "bg-muted text-muted-foreground" },
   } as const
   const { label, icon: Icon, cls } = map[status]
   return (
@@ -335,6 +317,9 @@ function ClaimForm({ onCancel, onSubmitted }: { onCancel: () => void; onSubmitte
         </label>
         <textarea
           id="evidence"
+          required
+          minLength={10}
+          maxLength={2000}
           value={evidenceNotes}
           onChange={(e) => setEvidenceNotes(e.target.value)}
           rows={3}
@@ -519,27 +504,19 @@ function ProfileEditor({ claim, tier }: { claim: BusinessClaim; tier: Tier }) {
           see what it unlocks; the preview is inert and never shows invented
           follower figures. */}
       {caps.instagramConnect ? (
-        <InstagramSection instagramUrl={draft.instagram_url} connection={null} />
+        <InstagramConnection claimId={claim.id} instagramUrl={draft.instagram_url} />
       ) : (
         <TierLockedSection
           title="Connect your Instagram account"
           description="Show your latest posts and follower count on your listing, pulled live from Instagram."
           requiredTier={REQUIRED_TIER.instagramConnect ?? "silver"}
         >
-          <InstagramSection instagramUrl={draft.instagram_url} connection={null} />
+          <InstagramConnection claimId={claim.id} instagramUrl={draft.instagram_url} />
         </TierLockedSection>
       )}
 
-      {/* Native bookings: Silver. Fully functional when unlocked. */}
-      {caps.nativeBookings ? (
-        <BookingsSection claim={claim} />
-      ) : (
-        <TierLockedSection
-          title="Take bookings inside SpotMeOut"
-          description="Let customers request a table without leaving your listing, and manage requests here."
-          requiredTier={REQUIRED_TIER.nativeBookings ?? "silver"}
-        />
-      )}
+      {/* Native bookings remain deferred during Phase 2. */}
+      <p className="text-sm text-muted-foreground">Customer bookings and the booking builder remain deferred. External booking links above are available.</p>
 
       {/* Promotions: Silver. */}
       {caps.promotions ? (
@@ -552,16 +529,8 @@ function ProfileEditor({ claim, tier }: { claim: BusinessClaim; tier: Tier }) {
         />
       )}
 
-      {/* Website builder: Silver. A self-managed one-page microsite. */}
-      {caps.websiteBuilder ? (
-        <WebsiteSection claim={claim} />
-      ) : (
-        <TierLockedSection
-          title="Build your website"
-          description="Create a one-page microsite from your listing, with an optional custom domain."
-          requiredTier={REQUIRED_TIER.websiteBuilder ?? "silver"}
-        />
-      )}
+      {/* Website builder remains deferred during Phase 2. */}
+      <p className="text-sm text-muted-foreground">The Silver website builder, Gold AI agent and payments are not enabled.</p>
 
       {/* Analytics: Silver. Real aggregated counts, never invented. */}
       {caps.analytics ? (

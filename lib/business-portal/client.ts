@@ -1,8 +1,9 @@
 "use client"
 
 import { createClient } from "@/lib/supabase/client"
+import { portalRequest } from "@/lib/business-portal/request"
 
-export type ClaimStatus = "pending" | "approved" | "rejected"
+export type ClaimStatus = "pending" | "approved" | "rejected" | "revoked" | "disputed"
 export type Tier = "bronze" | "silver" | "gold"
 
 export interface BusinessClaim {
@@ -53,16 +54,7 @@ export type BusinessProfileDraft = Partial<
 >
 
 export async function listClaims(): Promise<BusinessClaim[]> {
-  const supabase = createClient()
-  const { data, error } = await supabase
-    .from("business_claims")
-    .select(
-      "id,user_id,business_ref,business_name,status,contact_email,contact_phone,evidence_notes,created_at,reviewed_at",
-    )
-    .order("created_at", { ascending: false })
-
-  if (error) throw new Error(error.message)
-  return (data ?? []) as BusinessClaim[]
+  return portalRequest<BusinessClaim[]>("/api/merchant/claims")
 }
 
 export async function submitClaim(input: {
@@ -72,51 +64,14 @@ export async function submitClaim(input: {
   contactPhone?: string
   evidenceNotes?: string
 }): Promise<BusinessClaim> {
-  const supabase = createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) throw new Error("You need to be signed in to claim a business.")
-
-  const { data, error } = await supabase
-    .from("business_claims")
-    .insert({
-      user_id: user.id,
-      business_ref: input.businessRef.trim(),
-      business_name: input.businessName.trim(),
-      contact_email: input.contactEmail?.trim() || null,
-      contact_phone: input.contactPhone?.trim() || null,
-      evidence_notes: input.evidenceNotes?.trim() || null,
-      // status intentionally omitted - the DB default is 'pending' and the RLS
-      // insert policy requires it, so a claim can never be self-approved.
-    })
-    .select(
-      "id,user_id,business_ref,business_name,status,contact_email,contact_phone,evidence_notes,created_at,reviewed_at",
-    )
-    .single()
-
-  if (error) {
-    // 23505 = unique_violation on (user_id, business_ref)
-    if (error.code === "23505") {
-      throw new Error("You have already submitted a claim for this venue.")
-    }
-    throw new Error(error.message)
-  }
-  return data as BusinessClaim
+  return portalRequest<BusinessClaim>("/api/merchant/claims", {
+    method: "POST",
+    body: JSON.stringify({ businessRef: input.businessRef, contactEmail: input.contactEmail, contactPhone: input.contactPhone, evidenceNotes: input.evidenceNotes }),
+  })
 }
 
 export async function getProfileForClaim(claimId: string): Promise<BusinessProfile | null> {
-  const supabase = createClient()
-  const { data, error } = await supabase
-    .from("business_profiles")
-    .select(
-      "id,claim_id,user_id,business_ref,tagline,description,booking_url,menu_url,order_url,website_url,contact_phone,contact_email,instagram_url,facebook_url,x_url,tiktok_url",
-    )
-    .eq("claim_id", claimId)
-    .maybeSingle()
-
-  if (error) throw new Error(error.message)
-  return (data as BusinessProfile | null) ?? null
+  return portalRequest<BusinessProfile | null>(`/api/merchant/claims/${encodeURIComponent(claimId)}/profile`)
 }
 
 /**
@@ -129,43 +84,7 @@ export async function saveProfile(
   claim: Pick<BusinessClaim, "id" | "business_ref">,
   draft: BusinessProfileDraft,
 ): Promise<BusinessProfile> {
-  const supabase = createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) throw new Error("You need to be signed in.")
-
-  const existing = await getProfileForClaim(claim.id)
-  const payload = { ...normaliseDraft(draft) }
-
-  if (existing) {
-    const { data, error } = await supabase
-      .from("business_profiles")
-      .update(payload)
-      .eq("id", existing.id)
-      .select(
-        "id,claim_id,user_id,business_ref,tagline,description,booking_url,menu_url,order_url,website_url,contact_phone,contact_email,instagram_url,facebook_url,x_url,tiktok_url",
-      )
-      .single()
-    if (error) throw new Error(friendlyWriteError(error.message))
-    return data as BusinessProfile
-  }
-
-  const { data, error } = await supabase
-    .from("business_profiles")
-    .insert({
-      claim_id: claim.id,
-      user_id: user.id,
-      business_ref: claim.business_ref,
-      ...payload,
-    })
-    .select(
-      "id,claim_id,user_id,business_ref,tagline,description,booking_url,menu_url,order_url,website_url,contact_phone,contact_email,instagram_url,facebook_url,x_url,tiktok_url",
-    )
-    .single()
-
-  if (error) throw new Error(friendlyWriteError(error.message))
-  return data as BusinessProfile
+  return portalRequest<BusinessProfile>(`/api/merchant/claims/${encodeURIComponent(claim.id)}/profile`, { method: "PUT", body: JSON.stringify(normaliseDraft(draft)) })
 }
 
 export async function getSubscription(): Promise<Subscription | null> {

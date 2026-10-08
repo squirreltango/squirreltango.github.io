@@ -22,6 +22,7 @@ import { hasVerifiedInstagramData } from "@/lib/business/provenance"
 import { HygieneBadgeDetail } from "@/components/hygiene-badge"
 import { BusinessPhotoCarousel } from "@/components/business-photo-carousel"
 import { BusinessInfoRows } from "@/components/business-info-rows"
+import { ClaimBusinessAction } from "@/components/business/claim-business-action"
 import { cn } from "@/lib/utils"
 import { notFound } from "next/navigation"
 
@@ -466,7 +467,7 @@ export default function BusinessDetailPage({ params }: { params: Promise<{ id: s
 
           {/* Details - opening hours, contact and website as real controls.
               Rows with no genuine Google data are hidden entirely. */}
-          <BusinessInfoRows business={business} />
+          <div><BusinessInfoRows business={business} /><ClaimBusinessAction businessRef={business.id} businessName={business.name} /></div>
         </div>
 
         {/* Photo Gallery Section */}
