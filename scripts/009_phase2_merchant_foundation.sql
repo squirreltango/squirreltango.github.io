@@ -91,6 +91,13 @@ revoke update (id, account_type, display_name, avatar_url, created_at, updated_a
   on public.profiles from public, anon, authenticated;
 grant update (display_name, avatar_url) on public.profiles to authenticated;
 
+-- subscriptions has only an owner SELECT policy, so RLS already denies writes;
+-- remove the table grants too. TRUNCATE bypasses RLS, so revoke it from browser roles.
+revoke insert, update, delete, truncate on public.subscriptions from public, anon, authenticated;
+revoke truncate on public.business_claims, public.profiles, public.business_profiles, public.business_promotions,
+  public.business_services, public.business_websites, public.business_booking_settings,
+  public.business_instagram_connections from public, anon, authenticated;
+
 -- Server-owned entry points. No browser role may execute these functions.
 create table public.merchant_rate_limits (
   actor_id uuid not null references auth.users(id),
@@ -153,6 +160,9 @@ begin
   select * into c from public.business_claims where id = p_claim for update;
   if not found then raise exception 'Claim not found' using errcode = 'P0002'; end if;
   if c.status is distinct from p_expected then raise exception 'Claim changed; reload' using errcode = '40001'; end if;
+  if p_status = 'approved' and c.user_id = p_actor then
+    raise exception 'Self-approval is not permitted' using errcode = '42501';
+  end if;
   if not coalesce((c.status = 'pending' and p_status in ('approved','rejected','disputed'))
     or (c.status = 'approved' and p_status in ('revoked','disputed'))
     or (c.status = 'disputed' and p_status in ('approved','rejected','revoked'))
