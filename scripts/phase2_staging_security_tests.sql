@@ -1,23 +1,28 @@
 -- STAGING ONLY. Run in the staging project's SQL Editor AFTER 008 and 009.
 -- Never run against cytwncsewgetuwmhevdv. Everything ends in ROLLBACK, so no
 -- test claim, audit row, rate-limit row or profile persists.
--- Prerequisites in staging: rajekasingam@gmail.com and ONE other confirmed test
--- account (the merchant). Every check prints PASS or aborts with FAIL.
+-- Prerequisites in staging (fmscnxlciphrvsdkjaei): staging_grant_platform_admin.sql has
+-- run. Paste the same two user IDs below. Every check prints PASS or aborts with FAIL.
 begin;
 
 do $$
 declare
-  admin_id uuid; merchant_id uuid; claim public.business_claims; own_claim public.business_claims;
+  admin_id constant uuid := '00000000-0000-0000-0000-000000000000';    -- spotmeoutt@gmail.com
+  merchant_id constant uuid := '00000000-0000-0000-0000-000000000000'; -- rajekasingam@gmail.com
+  claim public.business_claims; own_claim public.business_claims;
   t record; denied boolean; n integer;
   ref text := 'phase2-staging-test-' || gen_random_uuid();
 begin
-  select id into admin_id from auth.users where lower(email) = 'rajekasingam@gmail.com' and email_confirmed_at is not null;
-  select id into merchant_id from auth.users
-    where lower(email) <> 'rajekasingam@gmail.com' and email_confirmed_at is not null and not is_anonymous
-    order by created_at limit 1;
-  if admin_id is null or merchant_id is null then raise exception 'FAIL setup: need confirmed admin and merchant accounts'; end if;
+  if (select count(*) from auth.users) > 5 then raise exception 'FAIL setup: more than 5 users, this does not look like staging'; end if;
+  if not exists (select 1 from auth.users where id = admin_id and lower(email) = 'spotmeoutt@gmail.com' and email_confirmed_at is not null)
+    or not exists (select 1 from auth.users where id = merchant_id and lower(email) = 'rajekasingam@gmail.com' and email_confirmed_at is not null)
+    then raise exception 'FAIL setup: paste the confirmed admin and merchant user IDs'; end if;
   if not exists (select 1 from public.platform_admin_entitlements where user_id = admin_id and platform_admin and subscription_test_mode)
-    then raise exception 'FAIL setup: admin entitlement missing (was 009 applied?)'; end if;
+    then raise exception 'FAIL setup: admin entitlement missing (run staging_grant_platform_admin.sql)'; end if;
+  if exists (select 1 from public.platform_admin_entitlements where user_id = merchant_id and (platform_admin or subscription_test_mode))
+    or (select count(*) from public.platform_admin_entitlements where platform_admin) <> 1
+    then raise exception 'FAIL setup: merchant has admin rights or more than one admin exists'; end if;
+  raise notice 'PASS roles: one admin by user ID, merchant has no admin rights';
 
   -- 1. Browser (authenticated) privilege escalation must be denied.
   for t in select * from (values

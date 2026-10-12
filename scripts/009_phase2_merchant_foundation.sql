@@ -1,7 +1,9 @@
 -- REVIEW ONLY. Target: cytwncsewgetuwmhevdv. Never run from application code.
 -- Includes Phase 2 server RPCs. Deploy matching reviewed application paths together.
 -- Still unapplied: staging security/concurrency verification is required before production approval.
--- Abort on duplicate approved claims or a missing/unconfirmed admin; never repair data automatically.
+-- Abort on duplicate approved claims; never repair data automatically.
+-- Grants no admin. Entitlements are assigned afterwards by explicit user ID in a
+-- separate, environment-specific script (staging: staging_grant_platform_admin.sql).
 begin;
 
 lock table public.business_claims in share row exclusive mode;
@@ -12,13 +14,6 @@ begin
     where status = 'approved' group by business_ref having count(*) > 1
   ) then
     raise exception 'Duplicate approved claims require manual review';
-  end if;
-  if (select count(*) from auth.users
-      where lower(email) = 'rajekasingam@gmail.com'
-        and email_confirmed_at is not null
-        and deleted_at is null and not is_anonymous
-        and (banned_until is null or banned_until <= now())) <> 1 then
-    raise exception 'Exactly one confirmed, active intended admin must exist';
   end if;
 end $$;
 
@@ -32,13 +27,6 @@ create table public.platform_admin_entitlements (
 alter table public.platform_admin_entitlements enable row level security;
 revoke all on public.platform_admin_entitlements from public, anon, authenticated;
 grant select, insert, update, delete on public.platform_admin_entitlements to service_role;
-
-insert into public.platform_admin_entitlements
-  (user_id, platform_admin, subscription_test_mode)
-select id, true, true from auth.users
-where lower(email) = 'rajekasingam@gmail.com'
-  and email_confirmed_at is not null and deleted_at is null
-  and not is_anonymous and (banned_until is null or banned_until <= now());
 
 alter table public.business_claims drop constraint business_claims_status_check;
 alter table public.business_claims add constraint business_claims_status_check
